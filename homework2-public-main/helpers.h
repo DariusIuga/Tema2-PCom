@@ -1,13 +1,8 @@
-#pragma once
-
-#include <cstdint>
-
-#define BUFLEN		2048    // dimensiunea maxima a calupului de date
-#define MAX_CLIENTS	10	    // numarul maxim de clienti in asteptare
+#ifndef _HELPERS_H
+#define _HELPERS_H 1
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <memory>
 
 /*
  * Macro de verificare a erorilor
@@ -26,13 +21,7 @@
 		}									\
 	} while(0)
 
-using std::size_t;
+#define BUFLEN		256	// dimensiunea maxima a calupului de date
+#define MAX_CLIENTS	5	// numarul maxim de clienti in asteptare
 
-struct shared_packet {
-    size_t size;
-    std::shared_ptr<char[]> data;
-};
-
-int max_int(int a, int b);
-double my_pow(double a, uint8_t e);
-void print_hex(char *data, size_t size);
+#endif

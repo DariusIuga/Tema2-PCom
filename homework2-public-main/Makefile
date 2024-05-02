@@ -1,46 +1,16 @@
-# Protocoale de comunicatii:
-# Laborator 8: Multiplexare
 # Makefile
 
-CC = g++
-CFLAGS = -w -Wall
-
-# Portul pe care asculta serverul (de completat)
-
-SERVER_SOURCE_FILES = \
-	tcp_app.cpp \
-	subscriber.cpp \
-	utils.cpp \
-	BufferedTcpSocket.cpp \
-	MultiSocket.cpp \
-
-CLIENT_SOURCE_FILES = \
-	tcp_app.cpp \
-	subscriber.cpp \
-	utils.cpp \
-	BufferedTcpSocket.cpp \
-	MultiSocket.cpp \
- 
-# SINGLE_HEADERS =
+CFLAGS = -Wall -g -o0
 
 all: server subscriber
 
-SERVER_OBJ_FILES = $(SERVER_SOURCE_FILES:.c=.o)
-CLIENT_OBJ_FILES = $(CLIENT_SOURCE_FILES:.c=.o)
+# Compile server.c
+server: server.cpp
 
-# Compileaza server.c
-server: $(SERVER_OBJ_FILES) server.cpp
-	$(CC) $(CFLAGS) $^ -o $@
+# Compile subscriber.c
+subscriber: subscriber.cpp
 
-# Compileaza client.c
-subscriber: $(CLIENT_OBJ_FILES) client.cpp
-	$(CC) $(CFLAGS) $^ -o $@
-
-
-.PHONY: clean run_server run_client
-
-%.o : %.cpp %.h
-	$(CC) $(CFLAGS) -c $< -o $@
+.PHONY: clean run_server run_subscriber
 
 clean:
-	rm -f server subscriber *.o
+	rm -f server subscriber

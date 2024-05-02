@@ -1,121 +1,197 @@
-#include "./subscriber.h"
-#include <cstddef>
-#include <cstring>
-#include <memory>
-#include <stdexcept>
-#include <string>
-#include <sstream>
+#include <iostream>
+#include <vector>
+#include <bits/stdc++.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <sys/types.h>
 #include <sys/socket.h>
-#include <stdint.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
+#include <netdb.h>
+#include "helpers.h"
 
-#include "./utils.h"
+#define BUF_LEN 2001
 
-#define DATA_TYPE_INT 0
-#define DATA_TYPE_SHORT_REAL 1
-#define DATA_TYPE_FLOAT 2
-#define DATA_TYPE_STRING 3
+using namespace std;
 
-subscriber new_subscriber() {
-    subscriber client;
-    client.sockfd = -1;
-    client.state = CLI_DISCONNECTED;
+/**
+ * Function splitting given message into an array of strings
+ * */
+int split_message(char *message, vector<string> &tokens) {
+	char buffer[BUF_LEN + 1];
+	memcpy(buffer, message, BUF_LEN);
+	buffer[BUF_LEN] = '\n';
+	string str = buffer;
+	string token;
+	std::stringstream str_stream (str);
 
-    return client;
+	// return tokens;
+	int prev_index = 0;
+
+	for (int i = 0; i < BUF_LEN; i++) {
+		if (buffer[i] == '\n') {
+			std::getline(str_stream, token, '\n');
+			tokens.push_back(token);
+		}
+		
+		// no partial message
+		if (buffer[i + 1] == '\0') {
+			return 1;
+		}
+	}
+
+	std::getline(str_stream, token, '\n');
+	tokens.push_back(token);
+
+	return 0;
 }
 
-shared_packet get_sendable_news(const char *buf, size_t size,
-        struct sockaddr_in saddr) {
-    shared_packet packet;
-    struct in_addr addr;
-    uint16_t port;
-    size_t final_size = size + sizeof(addr) + sizeof(port);
-
-    // Get socket data
-    addr = saddr.sin_addr;
-    port = htons(saddr.sin_port);
-
-    std::shared_ptr<char[]> new_buf(new char[final_size],
-            std::default_delete<char[]>());
-    size_t off = 0;
-
-    memcpy(new_buf.get() + off, &addr, sizeof(addr));
-    off += sizeof(addr);
-    memcpy(new_buf.get() + off, &port, sizeof(port));
-    off += sizeof(port);
-    memcpy(new_buf.get() + off, buf, size);
-    off += size;
-
-    packet.data = new_buf;
-    packet.size = off;
-
-    return packet;
+/**
+ * Function sending client's ID to the server
+ * **/
+void send_id_to_server(int sockfd, char *id) {
+	int n = send(sockfd, id, strlen(id), 0);
+	DIE(n < 0, "send");
 }
 
-std::string get_news_topic(const char *buf) {
-    return std::string(buf + sizeof(struct in_addr) + sizeof(uint16_t));
-}
+int main(int argc, char *argv[])
+{
+	setvbuf(stdout, NULL, _IONBF, BUFSIZ);
+	DIE(argc < 3, "arguments");
 
-void parse_subscriber_news(char *buf, size_t size, subscriber_news *news) {
-    news->addr = inet_ntoa(*(struct in_addr*)buf);
-    buf += sizeof(struct in_addr); 
-    size -= sizeof(struct in_addr);
+	int sockfd, n, ret;
+	struct sockaddr_in serv_addr;
+	char buffer[BUF_LEN];
 
-    news->port = std::to_string(*(uint16_t*)(buf));
-    buf += sizeof(uint16_t);
-    size -= sizeof(uint16_t);
+	fd_set read_fds, tmp_fds;
 
-    memcpy(news->topic, buf, TOPIC_LEN);
-    news->topic[TOPIC_LEN] = 0;
-    buf += TOPIC_LEN;
-    size -= TOPIC_LEN;
+	// empty set of read descriptors (read_fds) and the temporary set (tmp_fds)
+	FD_ZERO(&read_fds);
+	FD_ZERO(&tmp_fds);
 
-    std::ostringstream out;
-    long long sign, val;
-    double sign_real, real_val, exp;
-    char data_type = buf[0];
-    buf++;
-    size--;
+	sockfd = socket(AF_INET, SOCK_STREAM, 0);
+	DIE(sockfd < 0, "socket");
 
-    switch (data_type) {
-        case DATA_TYPE_INT : 
-            news->data_type = "INT";
+	// disable Nagle algorithm
+	int nagle = 1;
+	ret = setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &nagle, sizeof(nagle));
+	DIE(ret < 0, "Nagle");
 
-            // sign is 1 or 0
-            sign = (*(char*)buf) ? -1 : 1;
-            buf++;
-            val = ntohl(*(uint32_t*)(buf));
-            val *= sign;
-            news->value = std::to_string(val);
-            break;
-        case DATA_TYPE_SHORT_REAL:
-            news->data_type = "SHORT_REAL";
+	serv_addr.sin_family = AF_INET;
+	serv_addr.sin_port = htons(atoi(argv[3]));
+	ret = inet_aton(argv[2], &serv_addr.sin_addr);
+	DIE(ret == 0, "inet_aton");
 
-            real_val = ntohs(*(uint16_t*)buf);
-            real_val /= 100;
-            out.precision(2);
-            out << std::fixed << real_val;
-            news->value = out.str();
-            break;
-        case DATA_TYPE_FLOAT:
-            news->data_type = "FLOAT";
+	// create connection to server
+	ret = connect(sockfd, (struct sockaddr*) &serv_addr, sizeof(serv_addr));
+	DIE(ret < 0, "connect");
 
-            sign_real = (*(char*)buf) ? -1 : 1;
-            buf++;
-            real_val = ntohl(*(uint32_t*)buf);
-            buf += 4;
-            exp = *(uint8_t*)buf;
-            real_val /= my_pow(10, exp);
-            real_val *= sign_real;
+	send_id_to_server(sockfd, argv[1]);
 
-            out.precision(10);
-            out << real_val;
-            news->value = out.str();
-            break;
-        case DATA_TYPE_STRING:
-            news->data_type = "STRING";
+	FD_SET(STDIN_FILENO, &read_fds);
+	FD_SET(sockfd, &read_fds);
 
-            news->value = std::string(buf, size);
-            break;
-    }
+	while (1) {
+		tmp_fds = read_fds;
+		ret = select(sockfd + 1, &tmp_fds, NULL, NULL, NULL);
+		DIE(ret < 0, "select");
+
+		if (FD_ISSET(STDIN_FILENO, &tmp_fds)) {
+			// read data from STDIN
+			memset(buffer, 0, BUF_LEN);
+			fgets(buffer, BUF_LEN - 1, stdin);
+
+			// send the message to server
+			n = send(sockfd, buffer, strlen(buffer), 0);
+			DIE(n < 0, "send");
+
+			// perform exit/forceful shut command
+			if (n == 0 || strncmp(buffer, "exit", 4) == 0) {
+				break;
+			}
+		}
+
+		if (FD_ISSET(sockfd, &tmp_fds)) {
+			// data was received from server
+			string tmp = "";
+			memset(buffer, 0, BUF_LEN);
+
+			n = recv(sockfd, buffer, BUF_LEN, 0);
+			DIE(n < 0, "recv");
+
+			if (n == 0) {
+				// server forcefully shut
+				// client connection will also be closed
+				break;
+			}
+
+			if (strncmp(buffer, "exit", 4) == 0) {
+				// end connection for exit command
+				break;
+			}
+
+			while (n != 0) {
+				char buff[BUF_LEN];
+
+				if (buffer[0] == '\n') {
+					// end of buffer reached
+					break;
+				}
+
+				// split message based on new lines
+				vector<string> strings;
+				int ret = split_message(buffer, strings);
+
+				if (tmp.empty()) {
+					// no partial message
+
+					// write all messages to STDOUT besides the last one
+					// which could be partial
+					for (int i = 0; i < strings.size() - 1; i++) {
+						cout << strings[i] << "\n";
+					}
+				} else {
+					// pending partial message
+					tmp += strings[0];
+					// write the now completed message
+					cout << tmp << '\n';
+
+					// write all other messages to STDOUT besides the last one
+					// which could be partial
+					for (int i = 1; i < strings.size() - 1; i++) {
+						cout << strings[i] << "\n";
+					}
+
+					// no partial message
+					tmp.clear();
+
+					if (ret == 1 && strings.size() == 1) {
+						break;
+					}
+				}
+				
+				if (ret == 0) {
+					// partial message found
+					tmp += strings[strings.size() - 1];
+				} else {
+					// no partial message, which means end of buffer
+					cout << strings[strings.size() - 1] << "\n";
+					break;
+				}
+
+				// receive data from server
+				memset(buffer, 0, BUF_LEN);
+				n = recv(sockfd, buffer, BUF_LEN, 0);
+				DIE(n < 0, "recv");
+			}
+
+		}
+	}
+
+	close(sockfd);
+
+	return 0;
 }
