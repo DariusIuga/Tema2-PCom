@@ -10,10 +10,7 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
-#include <netdb.h>
 #include "helper.h"
-
-#define BUF_LEN 2001
 
 using namespace std;
 

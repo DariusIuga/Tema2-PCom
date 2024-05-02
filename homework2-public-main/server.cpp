@@ -2,9 +2,9 @@
 #include <vector>
 #include <map>
 #include <bits/stdc++.h>
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
+#include <cstdio>
+#include <cstring>
+#include <cstdlib>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -13,9 +13,8 @@
 #include <arpa/inet.h>
 #include "helper.h"
 
-#define TOPIC_MAX_SIZE 50
-#define BUF_LEN 2001
-#define MAX_CLIENTS    5    // numarul maxim de clienti in asteptare
+constexpr auto TOPIC_MAX_SIZE = 50;
+constexpr auto MAX_CLIENTS = 5 ;   // numarul maxim de clienti in asteptare
 
 using namespace std;
 

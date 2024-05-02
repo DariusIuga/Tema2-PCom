@@ -17,6 +17,8 @@
                 __FILE__, __LINE__);    \
         perror(call_description);        \
         exit(EXIT_FAILURE);                \
-    }                                    \
+    }                                       \
+
+constexpr auto BUF_LEN = 1560;
 
 #endif
