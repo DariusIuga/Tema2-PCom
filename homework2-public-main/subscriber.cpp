@@ -43,19 +43,18 @@ int split_message(char *message, vector<string> &tokens) {
     return 0;
 }
 
-/**
- * Function sending client's ID to the server
- * **/
-void send_id_to_server(int sockfd, char *id) {
-    int n = send(sockfd, id, strlen(id), 0);
-    DIE(n < 0, "send");
-}
+///**
+// * Function sending client's ID to the server
+// * **/
+//void send_id_to_server(int sockfd, char *id) {
+//    int n = send(sockfd, id, strlen(id), 0);
+//    DIE(send(sockfd, id, strlen(id), 0) < 0, "send");
+//}
 
 int main(int argc, char *argv[]) {
     setvbuf(stdout, NULL, _IONBF, BUFSIZ);
-    DIE(argc < 3, "arguments");
+    DIE(argc != 4, "Invalid number of arguments!\nUsage: ./subscriber <ID_CLIENT> <IP_SERVER> <PORT_SERVER>");
 
-    int sockfd, n, ret;
     struct sockaddr_in serv_addr;
     char buffer[BUF_LEN];
 
@@ -65,32 +64,31 @@ int main(int argc, char *argv[]) {
     FD_ZERO(&read_fds);
     FD_ZERO(&tmp_fds);
 
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    DIE(sockfd < 0, "socket");
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    DIE(sockfd < 0, "Error when creating TCP socket.");
 
     // disable Nagle algorithm
     int nagle = 1;
-    ret = setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &nagle, sizeof(nagle));
-    DIE(ret < 0, "Nagle");
+    DIE(setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &nagle, sizeof(nagle)) < 0,
+        "Error when disabling the Nagle algorithm.");
 
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_port = htons(atoi(argv[3]));
-    ret = inet_aton(argv[2], &serv_addr.sin_addr);
-    DIE(ret == 0, "inet_aton");
+
+    DIE(inet_aton(argv[2], &serv_addr.sin_addr) == 0, "Error when calling inet_aton for finding the server address.");
 
     // create connection to server
-    ret = connect(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr));
-    DIE(ret < 0, "connect");
+    DIE(connect(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0,
+        "Error when connecting socket to server.");
 
-    send_id_to_server(sockfd, argv[1]);
+    DIE(send(sockfd, argv[1], strlen(argv[1]), 0) < 0, "Error when sending the client ID to the server.");
 
     FD_SET(STDIN_FILENO, &read_fds);
     FD_SET(sockfd, &read_fds);
 
-    while (1) {
+    while (true) {
         tmp_fds = read_fds;
-        ret = select(sockfd + 1, &tmp_fds, NULL, NULL, NULL);
-        DIE(ret < 0, "select");
+        DIE(select(sockfd + 1, &tmp_fds, NULL, NULL, NULL) < 0, "Error when calling select.");
 
         if (FD_ISSET(STDIN_FILENO, &tmp_fds)) {
             // read data from STDIN
@@ -98,8 +96,8 @@ int main(int argc, char *argv[]) {
             fgets(buffer, BUF_LEN - 1, stdin);
 
             // send the message to server
-            n = send(sockfd, buffer, strlen(buffer), 0);
-            DIE(n < 0, "send");
+            int n = send(sockfd, buffer, strlen(buffer), 0);
+            DIE(n < 0, "Error when sending message to the server.");
 
             // perform exit/forceful shut command
             if (n == 0 || strncmp(buffer, "exit", 4) == 0) {
@@ -112,10 +110,10 @@ int main(int argc, char *argv[]) {
             string tmp = "";
             memset(buffer, 0, BUF_LEN);
 
-            n = recv(sockfd, buffer, BUF_LEN, 0);
-            DIE(n < 0, "recv");
+            int nr_bytes_read = recv(sockfd, buffer, BUF_LEN, 0);
+            DIE(nr_bytes_read < 0, "Error when receiving message from the server.");
 
-            if (n == 0) {
+            if (nr_bytes_read == 0) {
                 // server forcefully shut
                 // client connection will also be closed
                 break;
@@ -126,7 +124,7 @@ int main(int argc, char *argv[]) {
                 break;
             }
 
-            while (n != 0) {
+            while (nr_bytes_read != 0) {
                 char buff[BUF_LEN];
 
                 if (buffer[0] == '\n') {
@@ -177,13 +175,14 @@ int main(int argc, char *argv[]) {
 
                 // receive data from server
                 memset(buffer, 0, BUF_LEN);
-                n = recv(sockfd, buffer, BUF_LEN, 0);
-                DIE(n < 0, "recv");
+                nr_bytes_read = recv(sockfd, buffer, BUF_LEN, 0);
+                DIE(nr_bytes_read < 0, "Error when receiving message from the server.");
             }
 
         }
     }
 
+    // Close the TCP socket.
     close(sockfd);
 
     return 0;
