@@ -1,6 +1,6 @@
 # Makefile
 
-CFLAGS = -Wall -g -o0
+CFLAGS = -Wpedantic -g
 
 all: server subscriber
 
