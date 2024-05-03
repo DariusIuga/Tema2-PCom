@@ -1,6 +1,5 @@
 #include <iostream>
 #include <vector>
-#include <bits/stdc++.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -10,46 +9,10 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
-#include "helper.h"
+
+#include "subscriber_helper.h"
 
 using namespace std;
-
-/**
- * Function splitting given message into an array of strings
- * */
-int split_message(char *message, vector<string> &tokens) {
-    char buffer[BUF_LEN + 1];
-    memcpy(buffer, message, BUF_LEN);
-    buffer[BUF_LEN] = '\n';
-    string str = buffer;
-    string token;
-    std::stringstream str_stream(str);
-
-    for (int i = 0; i < BUF_LEN; i++) {
-        if (buffer[i] == '\n') {
-            getline(str_stream, token, '\n');
-            tokens.push_back(token);
-        }
-
-        // no partial message
-        if (buffer[i + 1] == '\0') {
-            return 1;
-        }
-    }
-
-    std::getline(str_stream, token, '\n');
-    tokens.push_back(token);
-
-    return 0;
-}
-
-///**
-// * Function sending client's ID to the server
-// * **/
-//void send_id_to_server(int sockfd, char *id) {
-//    int n = send(sockfd, id, strlen(id), 0);
-//    DIE(send(sockfd, id, strlen(id), 0) < 0, "send");
-//}
 
 int main(int argc, char *argv[]) {
     setvbuf(stdout, NULL, _IONBF, BUFSIZ);
@@ -90,6 +53,7 @@ int main(int argc, char *argv[]) {
         tmp_fds = read_fds;
         DIE(select(sockfd + 1, &tmp_fds, NULL, NULL, NULL) < 0, "Error when calling select.");
 
+        // We have some data to read from stdin
         if (FD_ISSET(STDIN_FILENO, &tmp_fds)) {
             // read data from STDIN
             memset(buffer, 0, BUF_LEN);
@@ -105,6 +69,7 @@ int main(int argc, char *argv[]) {
             }
         }
 
+        // We have some data to read from the TCP socket
         if (FD_ISSET(sockfd, &tmp_fds)) {
             // data was received from server
             string tmp = "";
@@ -113,14 +78,9 @@ int main(int argc, char *argv[]) {
             int nr_bytes_read = recv(sockfd, buffer, BUF_LEN, 0);
             DIE(nr_bytes_read < 0, "Error when receiving message from the server.");
 
-            if (nr_bytes_read == 0) {
-                // server forcefully shut
-                // client connection will also be closed
-                break;
-            }
-
-            if (strncmp(buffer, "exit", 4) == 0) {
-                // end connection for exit command
+            if (nr_bytes_read == 0 || strncmp(buffer, "exit", 4) == 0) {
+                // Server forcefully shut or the server acknowledged the exit command
+                // Close the client connection
                 break;
             }
 
