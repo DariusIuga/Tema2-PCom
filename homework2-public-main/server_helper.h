@@ -254,8 +254,7 @@ int find_subscriber(string client_id, topic topic) {
  * Function sending given message to client
  * */
 void send_udp_message_to_client(const char *message, client tcp_client) {
-    int n = send(tcp_client.socket, message, strlen(message), 0);
-    DIE(n < 0, "send");
+    DIE(send(tcp_client.socket, message, strlen(message), 0) < 0, "Error when sending UDP message to the client.");
 }
 
 /**
@@ -456,8 +455,7 @@ void execute_tcp_client_command(int socket, char *message,
         snprintf(buffer, n, "Subscribed to topic.\n");
 
         // send subscription message to client
-        n = send(socket, buffer, n, 0);
-        DIE(n < 0, "send");
+        DIE(send(socket, buffer, n, 0) < 0, "Error when sending subscribe message to the client.");
     } else if (strings[0].compare("unsubscribe") == 0) {
         // unsubscribe command
         if (strings.size() != 2) {
@@ -470,8 +468,7 @@ void execute_tcp_client_command(int socket, char *message,
         snprintf(buffer, n, "Unsubscribed from topic.\n");
 
         // send unsubscribe message to client
-        n = send(socket, buffer, n, 0);
-        DIE(n < 0, "send");
+        DIE(send(socket, buffer, n, 0) < 0, "Error when sending unsubscribe message to the client.");
     } else if (strings[0].compare("show") == 0) {
         // show command used for debugging
         print_map_id_clients(map_connected_clients);
@@ -499,8 +496,7 @@ void execute_tcp_client_command(int socket, char *message,
  * */
 void close_client(int socket, char buffer[BUF_LEN]) {
     // send the exit message to client
-    int n = send(socket, buffer, strlen(buffer), 0);
-    DIE(n < 0, "send");
+    DIE(send(socket, buffer, strlen(buffer), 0) < 0, "Error when sending unsubscribe message to the client.");
 
     // close connection
     close(socket);
@@ -543,7 +539,7 @@ std::unordered_map<int, client *>::iterator find_client_in_map(string id,
         client *client = client_iterator->second;
 
         // check if client's ID matches with given ID
-        if (client->id.compare(id) == 0) {
+        if (client->id == id) {
             return client_iterator;
         }
     }
@@ -576,8 +572,7 @@ void connect_client(string id, string ip, int port,
                 char buff[BUF_LEN];
                 memset(buff, 0, BUF_LEN);
                 memcpy(buff, "exit", strlen("exit"));
-                int n = send(socket, buff, strlen(buff), 0);
-                DIE(n < 0, "send");
+                DIE(send(socket, buff, strlen(buff), 0) < 0, "Error when sending exit command to socket.");
             }
 
             return;
@@ -675,8 +670,7 @@ int is_client_connected(int socket,
 char *receive_message(int sockfd) {
     char buffer[BUF_LEN];
     memset(buffer, 0, BUF_LEN);
-    int n = recv(sockfd, buffer, sizeof(buffer), 0);
-    DIE(n < 0, "recv");
+    DIE(recv(sockfd, buffer, sizeof(buffer), 0) < 0, "Error when receiving message from client.");
 
     char *tmp = buffer;
 

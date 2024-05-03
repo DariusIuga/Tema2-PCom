@@ -22,9 +22,8 @@ int main(int argc, char *argv[]) {
 
     int socket_TCP, socket_UDP, newsockfd, portno, dest;
     char buffer[BUF_LEN];
-    char client_id_buff[BUF_LEN];
     struct sockaddr_in serv_addr, cli_addr, udp_addr;
-    int n, i, ret;
+    int i, ret;
     socklen_t clilen, udplen;
 
     unordered_map<string, client *> map_id_clients;
@@ -41,15 +40,15 @@ int main(int argc, char *argv[]) {
 
     // create TCP socket
     socket_TCP = socket(AF_INET, SOCK_STREAM, 0);
-    DIE(socket_TCP < 0, "TCP socket");
+    DIE(socket_TCP < 0, "Error when creating the TCP socket.");
 
     // disable Nagle algorithm
     int nagle = 1;
-    ret = setsockopt(socket_TCP, IPPROTO_TCP, TCP_NODELAY, &nagle, sizeof(nagle));
-    DIE(ret < 0, "Nagle");
+    DIE(setsockopt(socket_TCP, IPPROTO_TCP, TCP_NODELAY, &nagle, sizeof(nagle)) < 0,
+        "Error when disabling the Nagle algorithm.");
 
     portno = atoi(argv[1]);
-    DIE(portno == 0, "atoi");
+    DIE(portno == 0, "Error when parsing port using atoi.");
 
     memset((char *) &serv_addr, 0, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
@@ -57,27 +56,24 @@ int main(int argc, char *argv[]) {
     serv_addr.sin_addr.s_addr = INADDR_ANY;
 
     // bind TCP client socket to port
-    ret = bind(socket_TCP, (struct sockaddr *) &serv_addr,
-               sizeof(struct sockaddr));
-    DIE(ret < 0, "TCP bind");
+    DIE(bind(socket_TCP, (struct sockaddr *) &serv_addr,
+             sizeof(struct sockaddr)) < 0, "Error when binding the TCP socket.");
 
     // enable reuse port action
     int reuse_port = 1;
-    ret = setsockopt(socket_TCP, SOL_SOCKET, SO_REUSEADDR, &reuse_port, sizeof(reuse_port));
-    DIE(ret < 0, "Reuse port");
+    DIE(setsockopt(socket_TCP, SOL_SOCKET, SO_REUSEADDR, &reuse_port, sizeof(reuse_port)) < 0,
+        "Error when enabling reuse port");
 
     // listen on the TCP client socket
-    ret = listen(socket_TCP, MAX_CLIENTS);
-    DIE(ret < 0, "TCP listen");
+    DIE(listen(socket_TCP, MAX_CLIENTS) < 0, "Error when listening on the TCP socket.");
 
     // create UDP socket
     socket_UDP = socket(AF_INET, SOCK_DGRAM, 0);
-    DIE(socket_UDP < 0, "UDP socket");
+    DIE(socket_UDP < 0, "Error when creating the UDP socket.");
 
     // bind UDP client socket to port
-    ret = bind(socket_UDP, (struct sockaddr *) &serv_addr,
-               sizeof(struct sockaddr));
-    DIE(ret < 0, "UDP bind");
+    DIE(bind(socket_UDP, (struct sockaddr *) &serv_addr,
+             sizeof(struct sockaddr)) < 0, "Error when binding the UDP socket.");
 
     // the sockets for TCP clients, UDP clients and STDIN are added to the read_fds set
     FD_SET(STDIN_FILENO, &read_fds);
@@ -85,11 +81,10 @@ int main(int argc, char *argv[]) {
     FD_SET(socket_UDP, &read_fds);
     fdmax = max(socket_TCP, socket_UDP);
 
-    while (1) {
+    while (true) {
         tmp_fds = read_fds;
 
-        ret = select(fdmax + 1, &tmp_fds, NULL, NULL, NULL);
-        DIE(ret < 0, "select");
+        DIE(select(fdmax + 1, &tmp_fds, NULL, NULL, NULL) < 0, "Error when calling select on the server.");
 
         if (FD_ISSET(STDIN_FILENO, &tmp_fds)) {
             // read data from STDIN
@@ -98,7 +93,7 @@ int main(int argc, char *argv[]) {
             buffer[strlen(buffer) - 1] = '\0';
 
             // check if server received exit command
-            if (buffer == NULL || strlen(buffer) == 0 || strncmp(buffer, "exit", 4) == 0) {
+            if (strlen(buffer) == 0 || strncmp(buffer, "exit", 4) == 0) {
                 // close all clients
                 close_clients(map_connected_clients, map_id_clients, buffer);
                 break;
@@ -115,7 +110,7 @@ int main(int argc, char *argv[]) {
                         // accept a connection request from the inactive socket
                         clilen = sizeof(cli_addr);
                         newsockfd = accept(socket_TCP, (struct sockaddr *) &cli_addr, &clilen);
-                        DIE(newsockfd < 0, "accept");
+                        DIE(newsockfd < 0, "Error when accepting a new TCP client.");
 
                         // socket is added to the set of read descriptors
                         FD_SET(newsockfd, &read_fds);
@@ -125,8 +120,7 @@ int main(int argc, char *argv[]) {
 
                         // receive ID from client
                         memset(buffer, 0, BUF_LEN);
-                        int n = recv(newsockfd, buffer, sizeof(buffer), 0);
-                        DIE(n < 0, "recv");
+                        DIE(recv(newsockfd, buffer, sizeof(buffer), 0) < 0, "Error when receiving client ID.");
 
                         // create connection
                         connect_client(buffer, inet_ntoa(cli_addr.sin_addr),
@@ -138,11 +132,11 @@ int main(int argc, char *argv[]) {
                     } else {
                         // receive message from subscriber
                         memset(buffer, 0, BUF_LEN);
-                        int n = recv(i, buffer, sizeof(buffer), 0);
-                        DIE(n < 0, "recv");
+                        ssize_t nr_bytes_read = recv(i, buffer, sizeof(buffer), 0);
+                        DIE(nr_bytes_read < 0, "Error when reading message from a TCP client.");
                         buffer[strlen(buffer) - 1] = '\0';
 
-                        if (n == 0 || strncmp(buffer, "exit", 4) == 0) {
+                        if (nr_bytes_read == 0 || strncmp(buffer, "exit", 4) == 0) {
                             // client received exit/forceful shut command
                             // client is disconnected from server
                             disconnect_client(i, map_connected_clients, map_id_clients);
@@ -162,7 +156,7 @@ int main(int argc, char *argv[]) {
                     // receive message from UDP client
                     ret = recvfrom(socket_UDP, buffer, BUF_LEN, 0,
                                    (struct sockaddr *) &udp_addr, &udplen);
-                    DIE(ret < 0, "UDP receive");
+                    DIE(ret < 0, "Error when receiving message from UDP client.");
                     // UDP client was closed so the program moves on
                     if (ret == 0) {
                         continue;
@@ -186,6 +180,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    // Close the server's TCP socket.
     close(socket_TCP);
 
     return 0;

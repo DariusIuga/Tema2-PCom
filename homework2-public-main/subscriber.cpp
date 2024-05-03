@@ -51,7 +51,7 @@ int main(int argc, char *argv[]) {
 
     while (true) {
         tmp_fds = read_fds;
-        DIE(select(sockfd + 1, &tmp_fds, NULL, NULL, NULL) < 0, "Error when calling select.");
+        DIE(select(sockfd + 1, &tmp_fds, NULL, NULL, NULL) < 0, "Error when calling select on one of the TCP clients.");
 
         // We have some data to read from stdin
         if (FD_ISSET(STDIN_FILENO, &tmp_fds)) {
