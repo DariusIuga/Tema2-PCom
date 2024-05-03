@@ -12,6 +12,8 @@
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
 
+#include <utility>
+
 #include "helper.h"
 
 constexpr auto TOPIC_MAX_SIZE = 50;
@@ -21,7 +23,7 @@ using namespace std;
 
 struct packet_UDP {
     string ip;
-    int port;
+    int port{};
     string topic_name;
     string data_type;
     string contents;
@@ -29,10 +31,10 @@ struct packet_UDP {
 };
 
 struct client {
-    int socket;
+    int socket{};
     string id, ip;
-    int port;
-    int state;
+    int port{};
+    int state{};
     queue<string> remainingMessages;
 };
 
@@ -50,7 +52,7 @@ struct topic {
     }
 
     bool operator==(const topic &t) const {
-        return name.compare(t.name) == 0;
+        return name == t.name;
     }
 
     bool operator>(const topic &t) const {
@@ -85,11 +87,11 @@ void print_map_id_clients(unordered_map<int, client *> map_connected_clients) {
 /**
  * Function searching topic based on given name and returning index
  * */
-int find_topic(string topic_name, vector<topic> topics) {
+int find_topic(const string &topic_name, vector<topic> topics) {
     // iterate through topics array
     for (int i = 0; i < topics.size(); ++i) {
         // compare topic name with given name
-        if (topics[i].name.compare(topic_name) == 0) {
+        if (topics[i].name == topic_name) {
             return i;
         }
     }
@@ -117,7 +119,7 @@ int calculate_pow(int pow) {
 packet_UDP create_udp_package(char *buffer, int port, string ip) {
     packet_UDP package;
     package.port = port;
-    package.ip = ip;
+    package.ip = std::move(ip);
 
     // get data type
     uint8_t data_type = buffer[TOPIC_MAX_SIZE];
@@ -238,11 +240,11 @@ packet_UDP create_udp_package(char *buffer, int port, string ip) {
 /**
  * Function searching subscriber based on ID and returning the index
  * */
-int find_subscriber(string client_id, topic topic) {
+int find_subscriber(const string &client_id, topic topic) {
     // iterate hrough subscriber array
     for (int i = 0; i < topic.subscribers.size(); ++i) {
         // coompare client ID with given ID
-        if (!topic.subscribers[i].subscribed_client->id.compare(client_id)) {
+        if (topic.subscribers[i].subscribed_client->id != client_id) {
             return i;
         }
     }
@@ -253,14 +255,14 @@ int find_subscriber(string client_id, topic topic) {
 /**
  * Function sending given message to client
  * */
-void send_udp_message_to_client(const char *message, client tcp_client) {
+void send_udp_message_to_client(const char *message, const client &tcp_client) {
     DIE(send(tcp_client.socket, message, strlen(message), 0) < 0, "Error when sending UDP message to the client.");
 }
 
 /**
  * Function sending the UDP message to subscribers
  * */
-void send_udp_message(packet_UDP packet, vector<topic> &topics) {
+void send_udp_message(const packet_UDP &packet, vector<topic> &topics) {
     string topic_name = packet.topic_name;
 
     // search topic based on name
@@ -284,14 +286,14 @@ void send_udp_message(packet_UDP packet, vector<topic> &topics) {
     const char *message = formatted_message.c_str();
 
     // iterate through subscribers
-    for (int i = 0; i < subscribers.size(); ++i) {
-        if (subscribers[i].subscribed_client->state == 1) {
+    for (auto &subscriber: subscribers) {
+        if (subscriber.subscribed_client->state == 1) {
             // send UDP message to subscribers that are online
             send_udp_message_to_client(message,
-                                       *(subscribers[i].subscribed_client));
-        } else if (subscribers[i].subscription_type == 1) {
+                                       *(subscriber.subscribed_client));
+        } else if (subscriber.subscription_type == 1) {
             // add message to offline subscribers' remaining messages queue
-            subscribers[i].subscribed_client->remainingMessages.
+            subscriber.subscribed_client->remainingMessages.
                     push(formatted_message);
         }
     }
@@ -300,7 +302,7 @@ void send_udp_message(packet_UDP packet, vector<topic> &topics) {
 /**
  * Function subscribing client to given topic
  * */
-void subscribe_client(string topic_name, int subscription_type,
+void subscribe_client(const string &topic_name, int subscription_type,
                       vector<topic> &topics, client *client) {
     int topic_ind = find_topic(topic_name, topics);
     topic topic;
@@ -325,7 +327,7 @@ void subscribe_client(string topic_name, int subscription_type,
     }
 
     // create subscriber and add data
-    subscriber new_subscriber;
+    subscriber new_subscriber{};
     new_subscriber.subscription_type = subscription_type;
     new_subscriber.subscribed_client = client;
 
@@ -336,7 +338,7 @@ void subscribe_client(string topic_name, int subscription_type,
 /**
  * Function unsubscribing client from given topic
  * */
-void unsubscribe_client(string topic_name,
+void unsubscribe_client(const string &topic_name,
                         vector<topic> &topics, client *client) {
     // search the topic based on name
     int topic_ind = find_topic(topic_name, topics);
@@ -370,10 +372,10 @@ vector<string> split_message(char *message) {
     char *tmp = strtok(message, " \n");
     vector<string> strings;
 
-    while (tmp != NULL) {
+    while (tmp != nullptr) {
         std::string str(tmp);
         strings.push_back(str);
-        tmp = strtok(NULL, " ");
+        tmp = strtok(nullptr, " ");
     }
 
     return strings;
@@ -382,12 +384,12 @@ vector<string> split_message(char *message) {
 /**
  * Function printing all connected subscribers of given topic
  * */
-void print_subscribed_clients(topic topic) {
+void print_subscribed_clients(const topic &topic) {
     vector<subscriber> subscribers = topic.subscribers;
 
     // iterate through array of topic's subscribers
-    for (int i = 0; i < subscribers.size(); i++) {
-        client *current_client = subscribers[i].subscribed_client;
+    for (auto &subscriber: subscribers) {
+        client *current_client = subscriber.subscribed_client;
 
         // check if client is online
         if (current_client->state) {
@@ -402,9 +404,9 @@ void print_subscribed_clients(topic topic) {
 /**
  * Function printing all topics; used for debugging
  * */
-void show_topics(vector<topic> topics) {
-    for (int i = 0; i < topics.size(); i++) {
-        cout << "Topic " << topics[i].name << "\n";
+void show_topics(const vector<topic> &topics) {
+    for (auto &topic: topics) {
+        cout << "Topic " << topic.name << "\n";
     }
 
     printf("\n");
@@ -415,11 +417,9 @@ void show_topics(vector<topic> topics) {
  * */
 void execute_tcp_client_command(int socket, char *message,
                                 vector<topic> &topics,
-                                unordered_map<int, client *> &map_connected_clients,
-                                unordered_map<string, client *> &map_id_clients) {
+                                unordered_map<int, client *> &map_connected_clients) {
     // find client based on socket
-    std::unordered_map<int, client *>::iterator client_iterator =
-            map_connected_clients.find(socket);
+    auto client_iterator = map_connected_clients.find(socket);
 
     // client was not found
     if (client_iterator == map_connected_clients.end()) {
@@ -428,11 +428,11 @@ void execute_tcp_client_command(int socket, char *message,
 
     client *client = client_iterator->second;
 
-    // proccess message
+    // process message
     vector<string> strings = split_message(message);
     char buffer[BUF_LEN];
 
-    if (strings[0].compare("subscribe") == 0) {
+    if (strings[0] == "subscribe") {
         // subscribe command
 
         // message not valid
@@ -451,12 +451,12 @@ void execute_tcp_client_command(int socket, char *message,
         // subscribe client
         subscribe_client(strings[1], subscription_type, topics, client);
 
-        int n = strlen("Subscribed to topic.\n") + 1;
+        size_t n = strlen("Subscribed to topic.\n") + 1;
         snprintf(buffer, n, "Subscribed to topic.\n");
 
         // send subscription message to client
         DIE(send(socket, buffer, n, 0) < 0, "Error when sending subscribe message to the client.");
-    } else if (strings[0].compare("unsubscribe") == 0) {
+    } else if (strings[0] == "unsubscribe") {
         // unsubscribe command
         if (strings.size() != 2) {
             return;
@@ -464,15 +464,15 @@ void execute_tcp_client_command(int socket, char *message,
 
         // unsubscribe client
         unsubscribe_client(strings[1], topics, client);
-        int n = strlen("Unsubscribed from topic.\n") + 1;
+        size_t n = strlen("Unsubscribed from topic.\n") + 1;
         snprintf(buffer, n, "Unsubscribed from topic.\n");
 
         // send unsubscribe message to client
         DIE(send(socket, buffer, n, 0) < 0, "Error when sending unsubscribe message to the client.");
-    } else if (strings[0].compare("show") == 0) {
+    } else if (strings[0] == "show") {
         // show command used for debugging
         print_map_id_clients(map_connected_clients);
-    } else if (strings[0].compare("show_id_clients_subscribed_to_topic") == 0) {
+    } else if (strings[0] == "show_id_clients_subscribed_to_topic") {
         // show subscribed clients to the topic; used for debugging
         string topic_name = strings[1];
 
@@ -485,7 +485,7 @@ void execute_tcp_client_command(int socket, char *message,
         }
 
         print_subscribed_clients(topics[index]);
-    } else if (strings[0].compare("show_topics") == 0) {
+    } else if (strings[0] == "show_topics") {
         // show all topics command; used for debugging
         show_topics(topics);
     }
@@ -505,9 +505,9 @@ void close_client(int socket, char buffer[BUF_LEN]) {
 /**
  * Function closing clients connections
  * */
-void close_clients(unordered_map<int, client *> map_connected_clients,
-                   unordered_map<string, client *> map_id_clients,
-                   char buffer[BUF_LEN]) {
+void close_clients(
+        unordered_map<string, client *> map_id_clients,
+        char buffer[BUF_LEN]) {
     std::unordered_map<string, client *>::iterator client_iterator;
 
     // iterate through map of clients
@@ -527,36 +527,14 @@ void close_clients(unordered_map<int, client *> map_connected_clients,
 }
 
 /**
- * Function finding client in map based on ID
- * */
-std::unordered_map<int, client *>::iterator find_client_in_map(string id,
-                                                               unordered_map<int, client *> map_connected_clients) {
-    std::unordered_map<int, client *>::iterator client_iterator;
-
-    // iterate through map of clients
-    for (client_iterator = map_connected_clients.begin();
-         client_iterator != map_connected_clients.end(); client_iterator++) {
-        client *client = client_iterator->second;
-
-        // check if client's ID matches with given ID
-        if (client->id == id) {
-            return client_iterator;
-        }
-    }
-
-    return map_connected_clients.end();
-}
-
-/**
  * Function connecting a client from the server
  * */
 void connect_client(string id, string ip, int port,
                     unordered_map<int, client *> &map_connected_clients,
                     unordered_map<string, client *> &map_id_clients,
-                    int socket, fd_set read_fds) {
+                    int socket) {
     // search client based on ID
-    std::unordered_map<string, client *>::iterator client_iterator =
-            map_id_clients.find(id);
+    auto client_iterator = map_id_clients.find(id);
 
     client *current_client;
 
@@ -629,11 +607,9 @@ void connect_client(string id, string ip, int port,
  * Function disconnecting a client from the server
  * */
 void disconnect_client(int socket,
-                       unordered_map<int, client *> &map_connected_clients,
-                       unordered_map<string, client *> &map_id_clients) {
+                       unordered_map<int, client *> &map_connected_clients) {
     // search client based on given socket in map
-    std::unordered_map<int, client *>::iterator client_iterator =
-            map_connected_clients.find(socket);
+    auto client_iterator = map_connected_clients.find(socket);
 
     // client not found
     if (client_iterator == map_connected_clients.end()) {
@@ -648,34 +624,5 @@ void disconnect_client(int socket,
 
     cout << "Client " << current_client->id << " disconnected.\n";
 }
-
-/**
- * Function searching for a client based on given socket, and then
- * checking the client's state
- * */
-int is_client_connected(int socket,
-                        unordered_map<int, client *> map_connected_clients) {
-    std::unordered_map<int, client *>::iterator client_iterator =
-            map_connected_clients.find(socket);
-
-    if (client_iterator == map_connected_clients.end()) {
-        return -1;
-    }
-
-    client found_client = *(client_iterator->second);
-
-    return found_client.state;
-}
-
-char *receive_message(int sockfd) {
-    char buffer[BUF_LEN];
-    memset(buffer, 0, BUF_LEN);
-    DIE(recv(sockfd, buffer, sizeof(buffer), 0) < 0, "Error when receiving message from client.");
-
-    char *tmp = buffer;
-
-    return tmp;
-}
-
 
 #endif //TEMA2_PCOM_SERVER_HELPER_H

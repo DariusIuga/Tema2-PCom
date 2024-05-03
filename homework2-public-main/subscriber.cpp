@@ -85,8 +85,6 @@ int main(int argc, char *argv[]) {
             }
 
             while (nr_bytes_read != 0) {
-                char buff[BUF_LEN];
-
                 if (buffer[0] == '\n') {
                     // end of buffer reached
                     break;
