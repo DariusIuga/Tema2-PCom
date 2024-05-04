@@ -182,7 +182,8 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // Close the server's TCP socket.
+    // Close the server's sockets.
+    close(socket_UDP);
     close(socket_TCP);
 
     return 0;
