@@ -39,7 +39,6 @@ struct client {
 };
 
 struct subscriber {
-    int subscription_type;
     client *subscribed_client;
 };
 
@@ -191,11 +190,11 @@ packet_UDP create_udp_package(char *buffer, int port, string ip) {
                 uint32_t first;
                 uint8_t negative_pow;
 
-                // get first part of Float number, of tye uint32_t
+                // get first part of Float number, of type uint32_t
                 memcpy(&first, buffer + TOPIC_MAX_SIZE + 2, sizeof(uint32_t));
                 first = ntohl(first);
 
-                // get negative power of Float number, of tye uint8_t
+                // get negative power of Float number, of type uint8_t
                 memcpy(&negative_pow,
                        buffer + TOPIC_MAX_SIZE + 2 + sizeof(uint32_t),
                        sizeof(uint8_t));
@@ -289,12 +288,7 @@ void send_udp_message(const packet_UDP &packet, vector<topic> &topics) {
     for (auto &subscriber: subscribers) {
         if (subscriber.subscribed_client->state == 1) {
             // send UDP message to subscribers that are online
-            send_udp_message_to_client(message,
-                                       *(subscriber.subscribed_client));
-        } else if (subscriber.subscription_type == 1) {
-            // add message to offline subscribers' remaining messages queue
-            subscriber.subscribed_client->remainingMessages.
-                    push(formatted_message);
+            send_udp_message_to_client(message, *(subscriber.subscribed_client));
         }
     }
 }
@@ -302,8 +296,7 @@ void send_udp_message(const packet_UDP &packet, vector<topic> &topics) {
 /**
  * Function subscribing client to given topic
  * */
-void subscribe_client(const string &topic_name, int subscription_type,
-                      vector<topic> &topics, client *client) {
+void subscribe_client(const string &topic_name, vector<topic> &topics, client *client) {
     int topic_ind = find_topic(topic_name, topics);
     topic topic;
 
@@ -318,17 +311,13 @@ void subscribe_client(const string &topic_name, int subscription_type,
     // find subscriber based on ID
     int subscriber_index = find_subscriber(client->id, topics[topic_ind]);
 
-    // check if cliet is already subscribed to topic
+    // check if client is already subscribed to topic
     if (subscriber_index != -1) {
-        // change subscription type
-        topics[topic_ind].subscribers[subscriber_index].subscription_type =
-                subscription_type;
         return;
     }
 
     // create subscriber and add data
     subscriber new_subscriber{};
-    new_subscriber.subscription_type = subscription_type;
     new_subscriber.subscribed_client = client;
 
     // insert subscriber to the topic's array of subscribers
@@ -442,10 +431,9 @@ void execute_tcp_client_command(int socket, char *message,
         // subscribe command
 
         // get SF
-        int subscription_type = 0;
 
         // subscribe client
-        subscribe_client(strings[1], subscription_type, topics, client);
+        subscribe_client(strings[1], topics, client);
 
         size_t n = strlen("Subscribed to topic \n") + strings[1].size() + 1;
         snprintf(buffer, n, "Subscribed to topic %s\n", strings[1].c_str());
