@@ -18,9 +18,9 @@ using namespace std;
 
 int main(int argc, char *argv[]) {
     setvbuf(stdout, nullptr, _IONBF, BUFSIZ);
-    DIE(argc < 2, "arguments");
+    DIE(argc != 2, "Usage: ./server <PORT_NUMBER>");
 
-    int socket_TCP, socket_UDP, newsockfd, portno;
+    int socket_TCP, socket_UDP, client_socket_fd, portno;
     char buffer[BUF_LEN];
     struct sockaddr_in serv_addr{}, cli_addr{}, udp_addr{};
     int i;
@@ -76,7 +76,7 @@ int main(int argc, char *argv[]) {
     DIE(bind(socket_UDP, (struct sockaddr *) &serv_addr,
              sizeof(struct sockaddr)) < 0, "Error when binding the UDP socket.");
 
-    // the sockets for TCP clients, UDP clients and STDIN are added to the read_fds set
+    // Add the sockets for STDIN, the UDP clients and the TCP clients to the read_fds set
     FD_SET(STDIN_FILENO, &read_fds);
     FD_SET(socket_TCP, &read_fds);
     FD_SET(socket_UDP, &read_fds);
@@ -94,7 +94,7 @@ int main(int argc, char *argv[]) {
             buffer[strlen(buffer) - 1] = '\0';
 
             // check if server received exit command
-            if (strlen(buffer) == 0 || strncmp(buffer, "exit", 4) == 0) {
+            if (strncmp(buffer, "exit", 4) == 0 || strlen(buffer) <= 0) {
                 // close all clients
                 close_clients(map_id_clients, buffer);
                 break;
@@ -106,32 +106,32 @@ int main(int argc, char *argv[]) {
         for (i = 0; i <= fdmax; i++) {
             if (FD_ISSET(i, &tmp_fds)) {
                 if (i != socket_UDP) {
-                    // client TCP actions
+                    // A new TCP client wants to connect
                     if (i == socket_TCP) {
                         // accept a connection request from the inactive socket
                         tcp_len = sizeof(cli_addr);
-                        newsockfd = accept(socket_TCP, (struct sockaddr *) &cli_addr, &tcp_len);
-                        DIE(newsockfd < 0, "Error when accepting a new TCP client.");
+                        client_socket_fd = accept(socket_TCP, (struct sockaddr *) &cli_addr, &tcp_len);
+                        DIE(client_socket_fd < 0, "Error when accepting a new TCP client.");
 
                         // socket is added to the set of read descriptors
-                        FD_SET(newsockfd, &read_fds);
-                        if (newsockfd > fdmax) {
-                            fdmax = newsockfd;
+                        FD_SET(client_socket_fd, &read_fds);
+                        if (client_socket_fd > fdmax) {
+                            fdmax = client_socket_fd;
                         }
 
                         // receive ID from client
                         memset(buffer, 0, BUF_LEN);
-                        DIE(recv(newsockfd, buffer, sizeof(buffer), 0) < 0, "Error when receiving client ID.");
+                        DIE(recv(client_socket_fd, buffer, sizeof(buffer), 0) < 0, "Error when receiving client ID.");
 
                         // create connection
                         connect_client(buffer, inet_ntoa(cli_addr.sin_addr),
                                        ntohs(cli_addr.sin_port),
                                        map_connected_clients, map_id_clients,
-                                       newsockfd);
+                                       client_socket_fd);
 
                         fflush(stdout);
                     } else {
-                        // receive message from subscriber
+                        // We received a message from a TCP client
                         memset(buffer, 0, BUF_LEN);
                         ssize_t nr_bytes_read = recv(i, buffer, sizeof(buffer), 0);
                         DIE(nr_bytes_read < 0, "Error when reading message from a TCP client.");
@@ -150,13 +150,15 @@ int main(int argc, char *argv[]) {
 
                     }
                 } else {
-                    // UDP client actions
+                    // We received a message from a UDP client
                     memset(buffer, 0, BUF_LEN);
                     udp_len = sizeof(udp_addr);
+
                     // receive message from UDP client
                     ret = recvfrom(socket_UDP, buffer, BUF_LEN, 0,
                                    (struct sockaddr *) &udp_addr, &udp_len);
                     DIE(ret < 0, "Error when receiving message from UDP client.");
+
                     // UDP client was closed so the program moves on
                     if (ret == 0) {
                         continue;

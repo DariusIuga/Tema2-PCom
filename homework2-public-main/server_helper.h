@@ -47,17 +47,17 @@ struct topic {
     string name;
     vector<subscriber> subscribers;
 
-    bool operator<(const topic &t) const {
-        return name.compare(t.name) < 0;
-    }
-
-    bool operator==(const topic &t) const {
-        return name == t.name;
-    }
-
-    bool operator>(const topic &t) const {
-        return name.compare(t.name) > 0;
-    }
+//    bool operator<(const topic &t) const {
+//        return name.compare(t.name) < 0;
+//    }
+//
+//    bool operator==(const topic &t) const {
+//        return name == t.name;
+//    }
+//
+//    bool operator>(const topic &t) const {
+//        return name.compare(t.name) > 0;
+//    }
 };
 
 /**
@@ -529,7 +529,7 @@ void close_clients(
 /**
  * Function connecting a client from the server
  * */
-void connect_client(string id, string ip, int port,
+void connect_client(const string& id, const string& ip, int port,
                     unordered_map<int, client *> &map_connected_clients,
                     unordered_map<string, client *> &map_id_clients,
                     int socket) {
