@@ -77,6 +77,7 @@ int main(int argc, char *argv[]) {
 
             int nr_bytes_read = recv(sockfd, buffer, BUF_LEN, 0);
             DIE(nr_bytes_read < 0, "Error when receiving message from the server.");
+            printf("%s", buffer);
 
             if (nr_bytes_read == 0 || strncmp(buffer, "exit", 4) == 0) {
                 // Server forcefully shut or the server acknowledged the exit command
@@ -84,59 +85,58 @@ int main(int argc, char *argv[]) {
                 break;
             }
 
-            while (nr_bytes_read != 0) {
-                if (buffer[0] == '\n') {
-                    // end of buffer reached
-                    break;
-                }
-
-                // split message based on new lines
-                vector<string> strings;
-                int ret = split_message(buffer, strings);
-
-                if (tmp.empty()) {
-                    // no partial message
-
-                    // write all messages to STDOUT besides the last one
-                    // which could be partial
-                    for (int i = 0; i < strings.size() - 1; i++) {
-                        cout << strings[i] << "\n";
-                    }
-                } else {
-                    // pending partial message
-                    tmp += strings[0];
-                    // write the now completed message
-                    cout << tmp << '\n';
-
-                    // write all other messages to STDOUT besides the last one
-                    // which could be partial
-                    for (int i = 1; i < strings.size() - 1; i++) {
-                        cout << strings[i] << "\n";
-                    }
-
-                    // no partial message
-                    tmp.clear();
-
-                    if (ret == 1 && strings.size() == 1) {
-                        break;
-                    }
-                }
-
-                if (ret == 0) {
-                    // partial message found
-                    tmp += strings[strings.size() - 1];
-                } else {
-                    // no partial message, which means end of buffer
-                    cout << strings[strings.size() - 1] << "\n";
-                    break;
-                }
-
-                // receive data from server
-                memset(buffer, 0, BUF_LEN);
-                nr_bytes_read = recv(sockfd, buffer, BUF_LEN, 0);
-                DIE(nr_bytes_read < 0, "Error when receiving message from the server.");
-            }
-
+//            while (nr_bytes_read != 0) {
+//                if (buffer[0] == '\n') {
+//                    // end of buffer reached
+//                    break;
+//                }
+//
+//                // split message based on new lines
+//                vector<string> strings;
+//                int ret = split_message(buffer, strings);
+//
+//                if (tmp.empty()) {
+//                    // no partial message
+//
+//                    // write all messages to STDOUT besides the last one
+//                    // which could be partial
+//                    for (int i = 0; i < strings.size() - 1; i++) {
+//                        cout << strings[i] << "\n";
+//                    }
+//                } else {
+//                    // pending partial message
+//                    tmp += strings[0];
+//                    // write the now completed message
+//                    cout << tmp << '\n';
+//
+//                    // write all other messages to STDOUT besides the last one
+//                    // which could be partial
+//                    for (int i = 1; i < strings.size() - 1; i++) {
+//                        cout << strings[i] << "\n";
+//                    }
+//
+//                    // no partial message
+//                    tmp.clear();
+//
+//                    if (ret == 1 && strings.size() == 1) {
+//                        break;
+//                    }
+//                }
+//
+//                if (ret == 0) {
+//                    // partial message found
+//                    tmp += strings[strings.size() - 1];
+//                } else {
+//                    // no partial message, which means end of buffer
+//                    cout << strings[strings.size() - 1] << "\n";
+//                    break;
+//                }
+//
+//                // receive data from server
+//                memset(buffer, 0, BUF_LEN);
+//                nr_bytes_read = recv(sockfd, buffer, BUF_LEN, 0);
+//                DIE(nr_bytes_read < 0, "Error when receiving message from the server.");
+//            }
         }
     }
 

@@ -432,40 +432,35 @@ void execute_tcp_client_command(int socket, char *message,
     vector<string> strings = split_message(message);
     char buffer[BUF_LEN];
 
+
+    // message not valid
+    if (strings.size() != 2) {
+        return;
+    }
+
     if (strings[0] == "subscribe") {
         // subscribe command
 
-        // message not valid
-        if (strings.size() != 3 || strings[2].length() != 1) {
-            return;
-        } else {
-            char c = strings[2][0];
-            if (c != '0' && c != '1') {
-                return;
-            }
-        }
-
         // get SF
-        int subscription_type = stoi(strings[2]);
+        int subscription_type = 0;
 
         // subscribe client
         subscribe_client(strings[1], subscription_type, topics, client);
 
-        size_t n = strlen("Subscribed to topic.\n") + 1;
-        snprintf(buffer, n, "Subscribed to topic.\n");
+        size_t n = strlen("Subscribed to topic \n") + strings[1].size() + 1;
+        snprintf(buffer, n, "Subscribed to topic %s\n", strings[1].c_str());
 
         // send subscription message to client
         DIE(send(socket, buffer, n, 0) < 0, "Error when sending subscribe message to the client.");
     } else if (strings[0] == "unsubscribe") {
         // unsubscribe command
-        if (strings.size() != 2) {
-            return;
-        }
 
         // unsubscribe client
         unsubscribe_client(strings[1], topics, client);
-        size_t n = strlen("Unsubscribed from topic.\n") + 1;
-        snprintf(buffer, n, "Unsubscribed from topic.\n");
+        size_t n = strlen("Unsubscribed to topic \n") + strings[1].size() + 1;
+        snprintf(buffer, n, "Unsubscribed to topic %s\n", strings[1].c_str());
+
+        cout << buffer << "\n";
 
         // send unsubscribe message to client
         DIE(send(socket, buffer, n, 0) < 0, "Error when sending unsubscribe message to the client.");
@@ -529,7 +524,7 @@ void close_clients(
 /**
  * Function connecting a client from the server
  * */
-void connect_client(const string& id, const string& ip, int port,
+void connect_client(const string &id, const string &ip, int port,
                     unordered_map<int, client *> &map_connected_clients,
                     unordered_map<string, client *> &map_id_clients,
                     int socket) {
