@@ -138,7 +138,7 @@ int main(int argc, char *argv[]) {
                         buffer[strlen(buffer) - 1] = '\0';
 
                         if (nr_bytes_read == 0 || strncmp(buffer, "exit", 4) == 0) {
-                            // client received exit/forceful shut command
+                            // client received exit/forceful shut down command
                             // client is disconnected from server
                             disconnect_client(i, map_connected_clients);
                             close(i);

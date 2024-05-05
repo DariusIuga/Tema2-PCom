@@ -84,21 +84,6 @@ void print_map_id_clients(unordered_map<int, client *> map_connected_clients) {
 }
 
 /**
- * Function searching topic based on given name and returning index
- * */
-int find_topic(const string &topic_name, vector<topic> topics) {
-    // iterate through topics array
-    for (int i = 0; i < topics.size(); ++i) {
-        // compare topic name with given name
-        if (topics[i].name == topic_name) {
-            return i;
-        }
-    }
-
-    return -1;
-}
-
-/**
  * Function calculating the power of 10 value
  * */
 int calculate_pow(int pow) {
@@ -240,11 +225,51 @@ packet_UDP create_udp_package(char *buffer, int port, string ip) {
  * Function searching subscriber based on ID and returning the index
  * */
 int find_subscriber(const string &client_id, topic topic) {
-    // iterate hrough subscriber array
-    for (int i = 0; i < topic.subscribers.size(); ++i) {
-        // coompare client ID with given ID
+    // Iterate through subscriber array
+    for (int i = 0; i < topic.subscribers.size(); i++) {
+        // Compare client ID with given ID
         if (topic.subscribers[i].subscribed_client->id != client_id) {
             return i;
+        }
+    }
+
+    return -1;
+}
+
+bool matches_wildcard_path(const string &topic, const string &wildcard_topic) {
+    // Escape "/" with "\/"
+    string escaped = regex_replace(wildcard_topic, std::regex("/"), "\\/");
+    // Replace "+" with "([^/]+)"
+    escaped = regex_replace(escaped, std::regex("\\+"), "([^/]+)");
+    // Replace "*" with "(.*)"
+    escaped = regex_replace(escaped, std::regex("\\*"), "(.*)");
+
+    // Verify if topic matches with wildcard_topic
+    return regex_match(topic, regex(escaped));
+}
+
+/**
+ * Function searching topic based on given name and returning index
+ * */
+int find_topic(const string &topic_name, vector<topic> topics, bool topic_can_be_wildcard) {
+
+    if (topic_can_be_wildcard) {
+        // The topic given as input can be a wildcard if
+
+        // iterate through topics array
+        for (int i = 0; i < topics.size(); ++i) {
+            // compare topic name with given name
+            if (topics[i].name == topic_name) {
+                return i;
+            }
+        }
+    } else {
+        // iterate through topics array
+        for (int i = 0; i < topics.size(); ++i) {
+            // See if the topic name matches with a wildcard
+            if (matches_wildcard_path(topic_name, topics[i].name)) {
+                return i;
+            }
         }
     }
 
@@ -265,7 +290,7 @@ void send_udp_message(const packet_UDP &packet, vector<topic> &topics) {
     string topic_name = packet.topic_name;
 
     // search topic based on name
-    int topic_ind = find_topic(topic_name, topics);
+    int topic_ind = find_topic(topic_name, topics, false);
     topic topic;
     string formatted_message = packet.formatted_message;
     formatted_message += "\n";
@@ -297,7 +322,7 @@ void send_udp_message(const packet_UDP &packet, vector<topic> &topics) {
  * Function subscribing client to given topic
  * */
 void subscribe_client(const string &topic_name, vector<topic> &topics, client *client) {
-    int topic_ind = find_topic(topic_name, topics);
+    int topic_ind = find_topic(topic_name, topics,true);
     topic topic;
 
     // topic not found
@@ -330,7 +355,7 @@ void subscribe_client(const string &topic_name, vector<topic> &topics, client *c
 void unsubscribe_client(const string &topic_name,
                         vector<topic> &topics, client *client) {
     // search the topic based on name
-    int topic_ind = find_topic(topic_name, topics);
+    int topic_ind = find_topic(topic_name, topics,true);
     topic topic;
 
     // topic not found
@@ -460,7 +485,7 @@ void execute_tcp_client_command(int socket, char *message,
         string topic_name = strings[1];
 
         // search for topic
-        int index = find_topic(topic_name, topics);
+        int index = find_topic(topic_name, topics,true);
 
         // topic not found
         if (index == -1) {
