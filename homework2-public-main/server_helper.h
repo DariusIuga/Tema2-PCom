@@ -34,7 +34,7 @@ struct client {
     int socket{};
     string id, ip;
     int port{};
-    int state{};
+    bool is_online{};
     queue<string> remainingMessages;
 };
 
@@ -73,8 +73,8 @@ void print_map_id_clients(unordered_map<int, client *> map_connected_clients) {
          ++client_iterator_by_sockets) {
         client *current_client = client_iterator_by_sockets->second;
 
-        // check if client is connected
-        if (current_client->state) {
+//        // check if client is connected
+        if (current_client->is_online) {
             cout << "Connected Client id: " << current_client->id
                  << " with port " << current_client->port << "\n";
         }
@@ -311,7 +311,7 @@ void send_udp_message(const packet_UDP &packet, vector<topic> &topics) {
 
     // iterate through subscribers
     for (auto &subscriber: subscribers) {
-        if (subscriber.subscribed_client->state == 1) {
+        if (subscriber.subscribed_client->is_online) {
             // send UDP message to subscribers that are online
             send_udp_message_to_client(message, *(subscriber.subscribed_client));
         }
@@ -322,7 +322,7 @@ void send_udp_message(const packet_UDP &packet, vector<topic> &topics) {
  * Function subscribing client to given topic
  * */
 void subscribe_client(const string &topic_name, vector<topic> &topics, client *client) {
-    int topic_ind = find_topic(topic_name, topics,true);
+    int topic_ind = find_topic(topic_name, topics, true);
     topic topic;
 
     // topic not found
@@ -355,7 +355,7 @@ void subscribe_client(const string &topic_name, vector<topic> &topics, client *c
 void unsubscribe_client(const string &topic_name,
                         vector<topic> &topics, client *client) {
     // search the topic based on name
-    int topic_ind = find_topic(topic_name, topics,true);
+    int topic_ind = find_topic(topic_name, topics, true);
     topic topic;
 
     // topic not found
@@ -406,7 +406,7 @@ void print_subscribed_clients(const topic &topic) {
         client *current_client = subscriber.subscribed_client;
 
         // check if client is online
-        if (current_client->state) {
+        if (current_client->is_online) {
             cout << "Connected Client id: " << current_client->id
                  << " with port " << current_client->port << "\n";
         }
@@ -485,7 +485,7 @@ void execute_tcp_client_command(int socket, char *message,
         string topic_name = strings[1];
 
         // search for topic
-        int index = find_topic(topic_name, topics,true);
+        int index = find_topic(topic_name, topics, true);
 
         // topic not found
         if (index == -1) {
@@ -524,7 +524,7 @@ void close_clients(
         client *current_client = client_iterator->second;
 
         // check if client is online
-        if (current_client->state == 1) {
+        if (current_client->is_online) {
             // close connection to client
             close_client(current_client->socket, buffer);
         }
@@ -549,7 +549,7 @@ void connect_client(const string &id, const string &ip, int port,
     if (client_iterator != map_id_clients.end()) {
         // client with given ID does exist inside the map
         current_client = client_iterator->second;
-        if (current_client->state == 1) {
+        if (current_client->is_online) {
             // client is online
             cout << "Client " << id << " already connected.\n";
 
@@ -569,7 +569,7 @@ void connect_client(const string &id, const string &ip, int port,
         // change client information
         current_client->ip = ip;
         current_client->port = port;
-        current_client->state = 1;
+        current_client->is_online = true;
         current_client->socket = socket;
 
         // send remaining messages in the messages queue
@@ -601,7 +601,7 @@ void connect_client(const string &id, const string &ip, int port,
     current_client->id = id;
     current_client->ip = ip;
     current_client->port = port;
-    current_client->state = 1;
+    current_client->is_online = true;
     current_client->socket = socket;
 
     // insert a pair of client and socket to the map
@@ -626,11 +626,12 @@ void disconnect_client(int socket,
 
     // client was found
     client *current_client = client_iterator->second;
-    // client's state is changed
-    current_client->state = 0;
+    // client's is_online is changed
+    current_client->is_online = false;
     map_connected_clients.erase(socket);
 
     cout << "Client " << current_client->id << " disconnected.\n";
 }
+
 
 #endif //TEMA2_PCOM_SERVER_HELPER_H
