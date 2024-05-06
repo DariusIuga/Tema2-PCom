@@ -17,85 +17,78 @@
 using namespace std;
 
 int main(int argc, char *argv[]) {
+    // Disable stdout buffering
     setvbuf(stdout, nullptr, _IONBF, BUFSIZ);
+    // Print correct usage
     DIE(argc != 2, "Usage: ./server <PORT_NUMBER>");
 
-    int socket_TCP, socket_UDP, client_socket_fd, portno;
+    // The buffer used for receiving messages
     char buffer[BUF_LEN];
-    struct sockaddr_in serv_addr{}, cli_addr{}, udp_addr{};
-    int i;
-    ssize_t ret;
-    socklen_t tcp_len, udp_len;
+    struct sockaddr_in serv_addr{};
 
     unordered_map<string, client *> map_id_clients;
     unordered_map<int, client *> map_connected_clients;
     vector<topic> topics;
 
-    fd_set read_fds;    // set for reading used in select()
-    fd_set tmp_fds;        // set used temporarily
-    int fdmax;            // maximum value of fd from read_fds set
+    // Parse port from stdin
+    int port_nr = atoi(argv[1]);
+    DIE(port_nr == 0, "Error when parsing port using atoi.");
 
-    // empty set of read descriptors (read_fds) and the temporary set (tmp_fds)
-    FD_ZERO(&read_fds);
-    FD_ZERO(&tmp_fds);
+    // Create sockaddr structure
+    memset((char *) &serv_addr, 0, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(port_nr);
+    serv_addr.sin_addr.s_addr = INADDR_ANY;
 
-    // create TCP socket
-    socket_TCP = socket(AF_INET, SOCK_STREAM, 0);
+    // Create TCP socket
+    int socket_TCP = socket(AF_INET, SOCK_STREAM, 0);
     DIE(socket_TCP < 0, "Error when creating the TCP socket.");
-
-    // disable Nagle algorithm
+    // Disable the Nagle algorithm
     int nagle = 1;
     DIE(setsockopt(socket_TCP, IPPROTO_TCP, TCP_NODELAY, &nagle, sizeof(nagle)) < 0,
         "Error when disabling the Nagle algorithm.");
-
-    portno = atoi(argv[1]);
-    DIE(portno == 0, "Error when parsing port using atoi.");
-
-    memset((char *) &serv_addr, 0, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(portno);
-    serv_addr.sin_addr.s_addr = INADDR_ANY;
-
-    // bind TCP client socket to port
+    // Bind TCP socket to port
     DIE(bind(socket_TCP, (struct sockaddr *) &serv_addr, sizeof(struct sockaddr)) < 0,
         "Error when binding the TCP socket.");
-
-    // enable reuse port action
-    int reuse_port = 1;
-    DIE(setsockopt(socket_TCP, SOL_SOCKET, SO_REUSEADDR, &reuse_port, sizeof(reuse_port)) < 0,
-        "Error when enabling reuse port");
-
-    // listen on the TCP client socket
+    // Mark the main TCP socket as passive and listen for incoming TCP clients on it
     DIE(listen(socket_TCP, MAX_CLIENTS) < 0, "Error when listening on the TCP socket.");
 
-    // create UDP socket
-    socket_UDP = socket(AF_INET, SOCK_DGRAM, 0);
+    // Create UDP socket
+    int socket_UDP = socket(AF_INET, SOCK_DGRAM, 0);
     DIE(socket_UDP < 0, "Error when creating the UDP socket.");
-
-    // bind UDP client socket to port
+    // Bind UDP client socket to port
     DIE(bind(socket_UDP, (struct sockaddr *) &serv_addr,
              sizeof(struct sockaddr)) < 0, "Error when binding the UDP socket.");
 
+    // Used by select()
+    // Set used for reading
+    fd_set read_fds;
+    // Set used temporarily
+    fd_set temp_fds;
+    // Initialize empty sets of read descriptors and temporary set
+    FD_ZERO(&read_fds);
+    FD_ZERO(&temp_fds);
     // Add the sockets for STDIN, the UDP clients and the TCP clients to the read_fds set
     FD_SET(STDIN_FILENO, &read_fds);
     FD_SET(socket_TCP, &read_fds);
     FD_SET(socket_UDP, &read_fds);
-    fdmax = max(socket_TCP, socket_UDP);
+    int max_nr_fd = max(socket_TCP, socket_UDP);
 
     while (true) {
-        tmp_fds = read_fds;
+        temp_fds = read_fds;
 
-        DIE(select(fdmax + 1, &tmp_fds, nullptr, nullptr, nullptr) < 0, "Error when calling select on the server.");
+        // temp_fds will contain file descriptors that can be read from
+        DIE(select(max_nr_fd + 1, &temp_fds, nullptr, nullptr, nullptr) < 0,
+            "Error when calling select on the server.");
 
-        if (FD_ISSET(STDIN_FILENO, &tmp_fds)) {
-            // read data from STDIN
+        if (FD_ISSET(STDIN_FILENO, &temp_fds)) {
+            // Read data from stdin
             memset(buffer, 0, BUF_LEN);
             fgets(buffer, BUF_LEN - 1, stdin);
             buffer[strlen(buffer) - 1] = '\0';
 
-            // check if server received exit command
+            // Check if the server received exit
             if (strncmp(buffer, "exit", 4) == 0 || strlen(buffer) <= 0) {
-                // close all clients
                 close_clients(map_id_clients, buffer);
                 break;
             }
@@ -103,80 +96,83 @@ int main(int argc, char *argv[]) {
             continue;
         }
 
-        for (i = 0; i <= fdmax; i++) {
-            if (FD_ISSET(i, &tmp_fds)) {
-                if (i != socket_UDP) {
+        for (int i = 0; i <= max_nr_fd; i++) {
+            // Loop through each file descriptor that can be read from
+            if (FD_ISSET(i, &temp_fds)) {
+                // Clear the previous message from the buffer
+                memset(buffer, 0, BUF_LEN);
+
+                if (i == socket_UDP) {
+                    // We received a message from a UDP client
+                    struct sockaddr_in udp_addr{};
+                    socklen_t udp_len = sizeof(udp_addr);
+
+                    // Receive message from UDP client
+                    ssize_t nr_bytes_read = recvfrom(socket_UDP, buffer, BUF_LEN, 0,
+                                                     (struct sockaddr *) &udp_addr, &udp_len);
+                    DIE(nr_bytes_read < 0,
+                        "Error when receiving message from UDP client.");
+
+                    // UDP client was closed
+                    if (nr_bytes_read == 0) {
+                        continue;
+                    }
+
+                    // Fetch the client's IP and port from the message
+                    std::string ip(inet_ntoa(udp_addr.sin_addr));
+                    int port = ntohs(udp_addr.sin_port);
+
+                    // Create a UDP packet based on the buffer contents
+                    packet_UDP packet = create_udp_package(buffer, port, ip);
+
+                    if (packet.formatted_message.empty()) {
+                        continue;
+                    }
+
+                    // Send the UDP message to the clients that are subscribed to its topic
+                    send_udp_message(packet, topics);
+
+                } else {
                     // A new TCP client wants to connect
                     if (i == socket_TCP) {
-                        // accept a connection request from the inactive socket
-                        tcp_len = sizeof(cli_addr);
-                        client_socket_fd = accept(socket_TCP, (struct sockaddr *) &cli_addr, &tcp_len);
-                        DIE(client_socket_fd < 0, "Error when accepting a new TCP client.");
+                        // Accept a connection request from a new subscriber
+                        struct sockaddr_in tcp_address{};
+                        socklen_t tcp_len = sizeof(tcp_address);
+                        int client_socket_TCP = accept(socket_TCP, (struct sockaddr *) &tcp_address, &tcp_len);
+                        DIE(client_socket_TCP < 0, "Error when accepting a new TCP client.");
 
-                        // socket is added to the set of read descriptors
-                        FD_SET(client_socket_fd, &read_fds);
-                        if (client_socket_fd > fdmax) {
-                            fdmax = client_socket_fd;
+                        // Add the socket to the set of read fds
+                        FD_SET(client_socket_TCP, &read_fds);
+                        if (max_nr_fd < client_socket_TCP) {
+                            max_nr_fd = client_socket_TCP;
                         }
 
-                        // receive ID from client
-                        memset(buffer, 0, BUF_LEN);
-                        DIE(recv(client_socket_fd, buffer, sizeof(buffer), 0) < 0, "Error when receiving client ID.");
+                        // Receive the client ID
+                        DIE(recv(client_socket_TCP, buffer, sizeof(buffer), 0) < 0, "Error when receiving client ID.");
 
-                        // create connection
-                        connect_client(buffer, inet_ntoa(cli_addr.sin_addr),
-                                       ntohs(cli_addr.sin_port),
+                        // Connect to the new TCP client
+                        connect_client(buffer, inet_ntoa(tcp_address.sin_addr),
+                                       ntohs(tcp_address.sin_port),
                                        map_connected_clients, map_id_clients,
-                                       client_socket_fd);
+                                       client_socket_TCP);
 
                         fflush(stdout);
                     } else {
                         // We received a message from a TCP client
-                        memset(buffer, 0, BUF_LEN);
                         ssize_t nr_bytes_read = recv(i, buffer, sizeof(buffer), 0);
                         DIE(nr_bytes_read < 0, "Error when reading message from a TCP client.");
                         buffer[strlen(buffer) - 1] = '\0';
 
                         if (nr_bytes_read == 0 || strncmp(buffer, "exit", 4) == 0) {
-                            // client received exit/forceful shut down command
-                            // client is disconnected from server
+                            // Client has received exit/forceful shut down command, disconnect it from the server
                             disconnect_client(i, map_connected_clients);
-                            close(i);
+                            // Remove the fd from the set
                             FD_CLR(i, &read_fds);
                         } else {
-                            // process message and execute command
+                            // Process and execute the command
                             execute_tcp_client_command(i, buffer, topics, map_connected_clients);
                         }
-
                     }
-                } else {
-                    // We received a message from a UDP client
-                    memset(buffer, 0, BUF_LEN);
-                    udp_len = sizeof(udp_addr);
-
-                    // receive message from UDP client
-                    ret = recvfrom(socket_UDP, buffer, BUF_LEN, 0,
-                                   (struct sockaddr *) &udp_addr, &udp_len);
-                    DIE(ret < 0, "Error when receiving message from UDP client.");
-
-                    // UDP client was closed so the program moves on
-                    if (ret == 0) {
-                        continue;
-                    }
-
-                    std::string ip(inet_ntoa(udp_addr.sin_addr));
-                    int port = ntohs(udp_addr.sin_port);
-
-                    // create a UDP packet
-                    packet_UDP packet = create_udp_package(buffer, port, ip);
-
-                    // the packet's formatted message is not valid
-                    if (packet.formatted_message.empty()) {
-                        continue;
-                    }
-
-                    // send the UDP message to respective clients
-                    send_udp_message(packet, topics);
                 }
             }
         }

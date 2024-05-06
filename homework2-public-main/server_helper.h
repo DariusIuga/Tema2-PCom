@@ -17,7 +17,8 @@
 #include "helper.h"
 
 constexpr auto TOPIC_MAX_SIZE = 50;
-constexpr auto MAX_CLIENTS = 5;   // numarul maxim de clienti in asteptare
+// Numarul maxim de clienti in asteptare
+constexpr auto MAX_CLIENTS = 1000;
 
 using namespace std;
 
@@ -408,8 +409,7 @@ void execute_tcp_client_command(int socket, char *message,
 
         // send unsubscribe message to client
         DIE(send(socket, buffer, n, 0) < 0, "Error when sending unsubscribe message to the client.");
-    }
-    else{
+    } else {
         cerr << "Unsupported command received: " << strings[0] << "\n";
     }
 }
@@ -535,6 +535,9 @@ void disconnect_client(int socket,
     // client's is_online is changed
     current_client->is_online = false;
     map_connected_clients.erase(socket);
+
+    // Close the fd;
+    close(socket);
 
     cout << "Client " << current_client->id << " disconnected.\n";
 }
