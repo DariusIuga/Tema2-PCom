@@ -35,7 +35,6 @@ struct client {
     string id, ip;
     int port{};
     bool is_online{};
-    queue<string> remainingMessages;
 };
 
 struct subscriber {
@@ -45,18 +44,6 @@ struct subscriber {
 struct topic {
     string name;
     vector<subscriber> subscribers;
-
-//    bool operator<(const topic &t) const {
-//        return name.compare(t.name) < 0;
-//    }
-//
-//    bool operator==(const topic &t) const {
-//        return name == t.name;
-//    }
-//
-//    bool operator>(const topic &t) const {
-//        return name.compare(t.name) > 0;
-//    }
 };
 
 /**
@@ -446,8 +433,7 @@ void execute_tcp_client_command(int socket, char *message,
     vector<string> strings = split_message(message);
     char buffer[BUF_LEN];
 
-
-    // message not valid
+    // Invalid message
     if (strings.size() != 2) {
         return;
     }
@@ -571,15 +557,6 @@ void connect_client(const string &id, const string &ip, int port,
         current_client->port = port;
         current_client->is_online = true;
         current_client->socket = socket;
-
-        // send remaining messages in the messages queue
-        while (!current_client->remainingMessages.empty()) {
-            string message = current_client->remainingMessages.front();
-            const char *message_tmp = message.c_str();
-            // send message to client and remove it from queue
-            send_udp_message_to_client(message_tmp, *current_client);
-            current_client->remainingMessages.pop();
-        }
 
         // delete the previous socket key from the map
         map_connected_clients.erase(previous_socket);
