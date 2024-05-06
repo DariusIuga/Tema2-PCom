@@ -47,30 +47,6 @@ struct topic {
 };
 
 /**
- * Function printing the online clients; used for debugging
- * */
-void print_map_id_clients(unordered_map<int, client *> map_connected_clients) {
-    unordered_map<int, client *>::iterator client_iterator_by_sockets;
-
-    printf("Print clients IDs:\n");
-
-    // iterate through map of clients
-    for (client_iterator_by_sockets = map_connected_clients.begin();
-         client_iterator_by_sockets != map_connected_clients.end();
-         ++client_iterator_by_sockets) {
-        client *current_client = client_iterator_by_sockets->second;
-
-//        // check if client is connected
-        if (current_client->is_online) {
-            cout << "Connected Client id: " << current_client->id
-                 << " with port " << current_client->port << "\n";
-        }
-    }
-
-    printf("\n");
-}
-
-/**
  * Function calculating the power of 10 value
  * */
 int calculate_pow(int pow) {
@@ -370,47 +346,16 @@ void unsubscribe_client(const string &topic_name,
  * Function splitting given message
  * */
 vector<string> split_message(char *message) {
-    char *tmp = strtok(message, " \n");
+    char *current_line = strtok(message, " \n");
     vector<string> strings;
 
-    while (tmp != nullptr) {
-        std::string str(tmp);
+    while (current_line != nullptr) {
+        std::string str(current_line);
         strings.push_back(str);
-        tmp = strtok(nullptr, " ");
+        current_line = strtok(nullptr, " ");
     }
 
     return strings;
-}
-
-/**
- * Function printing all connected subscribers of given topic
- * */
-void print_subscribed_clients(const topic &topic) {
-    vector<subscriber> subscribers = topic.subscribers;
-
-    // iterate through array of topic's subscribers
-    for (auto &subscriber: subscribers) {
-        client *current_client = subscriber.subscribed_client;
-
-        // check if client is online
-        if (current_client->is_online) {
-            cout << "Connected Client id: " << current_client->id
-                 << " with port " << current_client->port << "\n";
-        }
-    }
-
-    printf("\n");
-}
-
-/**
- * Function printing all topics; used for debugging
- * */
-void show_topics(const vector<topic> &topics) {
-    for (auto &topic: topics) {
-        cout << "Topic " << topic.name << "\n";
-    }
-
-    printf("\n");
 }
 
 /**
@@ -463,25 +408,9 @@ void execute_tcp_client_command(int socket, char *message,
 
         // send unsubscribe message to client
         DIE(send(socket, buffer, n, 0) < 0, "Error when sending unsubscribe message to the client.");
-    } else if (strings[0] == "show") {
-        // show command used for debugging
-        print_map_id_clients(map_connected_clients);
-    } else if (strings[0] == "show_id_clients_subscribed_to_topic") {
-        // show subscribed clients to the topic; used for debugging
-        string topic_name = strings[1];
-
-        // search for topic
-        int index = find_topic(topic_name, topics, true);
-
-        // topic not found
-        if (index == -1) {
-            return;
-        }
-
-        print_subscribed_clients(topics[index]);
-    } else if (strings[0] == "show_topics") {
-        // show all topics command; used for debugging
-        show_topics(topics);
+    }
+    else{
+        cerr << "Unsupported command received: " << strings[0] << "\n";
     }
 }
 
