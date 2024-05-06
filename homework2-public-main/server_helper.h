@@ -47,6 +47,47 @@ struct topic {
     vector<subscriber> subscribers;
 };
 
+
+int calculate_pow(int pow);
+
+packet_UDP create_udp_package(char *buffer, int port, string ip);
+
+int find_subscriber(const string &client_id, topic topic);
+
+bool matches_wildcard_path(const string &topic, const string &wildcard_topic);
+
+int find_topic(const string &topic_name, vector<topic> topics, bool topic_can_be_wildcard);
+
+void send_udp_message_to_client(const char *message, const client &tcp_client);
+
+void send_udp_message(const packet_UDP &packet, vector<topic> &topics);
+
+void subscribe_client(const string &topic_name, vector<topic> &topics, client *client);
+
+void unsubscribe_client(const string &topic_name,
+                        vector<topic> &topics, client *client);
+
+vector<string> split_message(char *message);
+
+void execute_tcp_client_command(int socket, char *message,
+                                vector<topic> &topics,
+                                unordered_map<int, client *> &map_connected_clients);
+
+void close_client(int socket, char buffer[BUF_LEN]);
+
+void close_clients(
+        unordered_map<string, client *> map_id_clients,
+        char buffer[BUF_LEN]);
+
+void connect_client(const string &id, const string &ip, int port,
+                    unordered_map<int, client *> &map_connected_clients,
+                    unordered_map<string, client *> &map_id_clients,
+                    int socket);
+
+void disconnect_client(int socket,
+                       unordered_map<int, client *> &map_connected_clients);
+
+
 /**
  * Function calculating the power of 10 value
  * */
@@ -60,6 +101,7 @@ int calculate_pow(int pow) {
 
     return result;
 }
+
 
 /**
  * Function creating the UDP package and formatting the UDP message

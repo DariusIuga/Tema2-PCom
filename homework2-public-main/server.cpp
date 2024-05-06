@@ -125,60 +125,60 @@ int main(int argc, char *argv[]) {
                     // Create a UDP packet based on the buffer contents
                     packet_UDP packet = create_udp_package(buffer, port, ip);
 
+                    // The packet is formatted incorrectly
                     if (packet.formatted_message.empty()) {
                         continue;
                     }
 
                     // Send the UDP message to the clients that are subscribed to its topic
                     send_udp_message(packet, topics);
-
-                } else {
+                } else if (i == socket_TCP) {
                     // A new TCP client wants to connect
-                    if (i == socket_TCP) {
-                        // Accept a connection request from a new subscriber
-                        struct sockaddr_in tcp_address{};
-                        socklen_t tcp_len = sizeof(tcp_address);
-                        int client_socket_TCP = accept(socket_TCP, (struct sockaddr *) &tcp_address, &tcp_len);
-                        DIE(client_socket_TCP < 0, "Error when accepting a new TCP client.");
 
-                        // Add the socket to the set of read fds
-                        FD_SET(client_socket_TCP, &read_fds);
-                        if (max_nr_fd < client_socket_TCP) {
-                            max_nr_fd = client_socket_TCP;
-                        }
+                    // Accept a connection request from a new subscriber
+                    struct sockaddr_in tcp_address{};
+                    socklen_t tcp_len = sizeof(tcp_address);
+                    int client_socket_TCP = accept(socket_TCP, (struct sockaddr *) &tcp_address, &tcp_len);
+                    DIE(client_socket_TCP < 0, "Error when accepting a new TCP client.");
 
-                        // Receive the client ID
-                        DIE(recv(client_socket_TCP, buffer, sizeof(buffer), 0) < 0, "Error when receiving client ID.");
+                    // Add the socket to the set of read fds
+                    FD_SET(client_socket_TCP, &read_fds);
+                    if (max_nr_fd < client_socket_TCP) {
+                        max_nr_fd = client_socket_TCP;
+                    }
 
-                        // Connect to the new TCP client
-                        connect_client(buffer, inet_ntoa(tcp_address.sin_addr),
-                                       ntohs(tcp_address.sin_port),
-                                       map_connected_clients, map_id_clients,
-                                       client_socket_TCP);
+                    // Receive the client ID
+                    DIE(recv(client_socket_TCP, buffer, sizeof(buffer), 0) < 0, "Error when receiving client ID.");
 
-                        fflush(stdout);
+                    // Connect to the new TCP client
+                    connect_client(buffer, inet_ntoa(tcp_address.sin_addr),
+                                   ntohs(tcp_address.sin_port),
+                                   map_connected_clients, map_id_clients,
+                                   client_socket_TCP);
+
+                    fflush(stdout);
+                } else {
+                    // We received a message from a TCP client
+                    ssize_t nr_bytes_read = recv(i, buffer, sizeof(buffer), 0);
+                    DIE(nr_bytes_read < 0, "Error when reading message from a TCP client.");
+                    buffer[strlen(buffer) - 1] = '\0';
+
+                    if (nr_bytes_read == 0 || strncmp(buffer, "exit", 4) == 0) {
+                        // Client has received exit/forceful shut down command, disconnect it from the server
+                        disconnect_client(i, map_connected_clients);
+                        // Remove the fd from the set
+                        FD_CLR(i, &read_fds);
                     } else {
-                        // We received a message from a TCP client
-                        ssize_t nr_bytes_read = recv(i, buffer, sizeof(buffer), 0);
-                        DIE(nr_bytes_read < 0, "Error when reading message from a TCP client.");
-                        buffer[strlen(buffer) - 1] = '\0';
-
-                        if (nr_bytes_read == 0 || strncmp(buffer, "exit", 4) == 0) {
-                            // Client has received exit/forceful shut down command, disconnect it from the server
-                            disconnect_client(i, map_connected_clients);
-                            // Remove the fd from the set
-                            FD_CLR(i, &read_fds);
-                        } else {
-                            // Process and execute the command
-                            execute_tcp_client_command(i, buffer, topics, map_connected_clients);
-                        }
+                        // Process and execute the command
+                        execute_tcp_client_command(i, buffer, topics, map_connected_clients);
                     }
                 }
             }
         }
     }
 
-    // Close the server's sockets.
+
+// Close the server's sockets.
     close(socket_UDP);
     close(socket_TCP);
 
