@@ -2,8 +2,8 @@
 // Created by darius on 5/3/24.
 //
 
-#ifndef TEMA2_PCOM_SERVER_HELPER_H
-#define TEMA2_PCOM_SERVER_HELPER_H
+#ifndef TEMA2_PCOM_SERVER_HELPER_HPP
+#define TEMA2_PCOM_SERVER_HELPER_HPP
 
 #include <bits/stdc++.h>
 #include <sys/types.h>
@@ -14,7 +14,7 @@
 
 #include <utility>
 
-#include "helper.h"
+#include "helper.hpp"
 
 constexpr auto TOPIC_MAX_SIZE = 50;
 // Numarul maxim de clienti in asteptare
@@ -47,8 +47,6 @@ struct topic {
     vector<subscriber> subscribers;
 };
 
-
-int calculate_pow(int pow);
 
 packet_UDP create_udp_package(char *buffer, int port, string ip);
 
@@ -86,21 +84,6 @@ void connect_client(const string &id, const string &ip, int port,
 
 void disconnect_client(int socket,
                        unordered_map<int, client *> &map_connected_clients);
-
-
-/**
- * Function calculating the power of 10 value
- * */
-int calculate_pow(int pow) {
-    int result = 1;
-
-    while (pow > 0) {
-        result *= 10;
-        pow--;
-    }
-
-    return result;
-}
 
 
 /**
@@ -194,7 +177,7 @@ packet_UDP create_udp_package(char *buffer, int port, string ip) {
                 stringstream payload_stream;
                 payload_stream << fixed
                                << setprecision((int) negative_pow)
-                               << (float) first / calculate_pow((int) negative_pow);
+                               << (float) first / pow(10, (int) negative_pow);
 
                 if (sign == 1) {
                     package.contents = "-";
@@ -585,4 +568,4 @@ void disconnect_client(int socket,
 }
 
 
-#endif //TEMA2_PCOM_SERVER_HELPER_H
+#endif //TEMA2_PCOM_SERVER_HELPER_HPP

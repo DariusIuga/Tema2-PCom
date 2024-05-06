@@ -12,7 +12,7 @@
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
 
-#include "server_helper.h"
+#include "server_helper.hpp"
 
 using namespace std;
 
