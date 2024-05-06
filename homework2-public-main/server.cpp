@@ -123,7 +123,7 @@ int main(int argc, char *argv[]) {
                     int port = ntohs(udp_addr.sin_port);
 
                     // Create a UDP packet based on the buffer contents
-                    packet_UDP packet = create_udp_package(buffer, port, ip);
+                    UDP_packet packet = get_udp_packet(buffer, ip, port);
 
                     // The packet is formatted incorrectly
                     if (packet.formatted_message.empty()) {

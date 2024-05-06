@@ -17,12 +17,12 @@
 #include "helper.hpp"
 
 constexpr auto TOPIC_MAX_SIZE = 50;
-// Numarul maxim de clienti in asteptare
+// Maximum numbr of clients waiting
 constexpr auto MAX_CLIENTS = 1000;
 
 using namespace std;
 
-struct packet_UDP {
+struct UDP_packet {
     string ip;
     int port{};
     string topic_name;
@@ -48,7 +48,7 @@ struct topic {
 };
 
 
-packet_UDP create_udp_package(char *buffer, int port, string ip);
+UDP_packet get_udp_packet(char *buffer, string &ip, int port);
 
 int find_subscriber(const string &client_id, topic topic);
 
@@ -58,7 +58,7 @@ int find_topic(const string &topic_name, vector<topic> topics, bool topic_can_be
 
 void send_udp_message_to_client(const char *message, const client &tcp_client);
 
-void send_udp_message(const packet_UDP &packet, vector<topic> &topics);
+void send_udp_message(const UDP_packet &packet, vector<topic> &topics);
 
 void subscribe_client(const string &topic_name, vector<topic> &topics, client *client);
 
@@ -89,123 +89,117 @@ void disconnect_client(int socket,
 /**
  * Function creating the UDP package and formatting the UDP message
  * */
-packet_UDP create_udp_package(char *buffer, int port, string ip) {
-    packet_UDP package;
+UDP_packet get_udp_packet(char *buffer, string &ip, int port) {
+    UDP_packet package;
     package.port = port;
-    package.ip = std::move(ip);
+    package.ip = ip;
 
-    // get data type
+    // Get the data type
     uint8_t data_type = buffer[TOPIC_MAX_SIZE];
-
-    // get topic name
-    char buff[TOPIC_MAX_SIZE + 1];
-    memset(buff, 0, TOPIC_MAX_SIZE + 1);
-    memcpy(buff, buffer, TOPIC_MAX_SIZE);
-    std::string topic_name(buff);
+    // Get the topic name
+    char topic_buf[TOPIC_MAX_SIZE + 1];
+    memset(topic_buf, 0, TOPIC_MAX_SIZE + 1);
+    memcpy(topic_buf, buffer, TOPIC_MAX_SIZE);
+    string topic_name(topic_buf);
     package.topic_name = topic_name;
 
-    if (data_type >= 0 && data_type <= 3) {
-        // check data type
-        switch (data_type) {
-            case 0: {
-                package.data_type = "INT";
+    switch (data_type) {
+        case 0: {
+            package.data_type = "INT";
 
-                // get sign byte
-                uint8_t sign = buffer[TOPIC_MAX_SIZE + 1];
-                if (sign != 0 && sign != 1) {
-                    break;
-                }
-
-                // get payload of type int
-                uint32_t payload_data;
-                memcpy(&payload_data, buffer + TOPIC_MAX_SIZE + 2,
-                       sizeof(uint32_t));
-                payload_data = ntohl(payload_data);
-
-                // create content
-                string result = std::to_string(payload_data);
-
-                if (sign == 1) {
-                    package.contents = "-" + result;
-                } else {
-                    package.contents = result;
-                }
-
+            // Get the sign byte
+            uint8_t sign = buffer[TOPIC_MAX_SIZE + 1];
+            if (!(sign == 0 || sign == 1)) {
                 break;
             }
-            case 1: {
-                package.data_type = "SHORT_REAL";
 
-                uint16_t payload_data;
+            // Get the int from the buffer
+            uint32_t payload_data;
+            memcpy(&payload_data, buffer + TOPIC_MAX_SIZE + 2,
+                   sizeof(uint32_t));
+            // Convert it to host order
+            payload_data = ntohl(payload_data);
+            string result = to_string(payload_data);
 
-                // get payload of type uint19_6
-                memcpy(&payload_data, buffer + TOPIC_MAX_SIZE + 1,
-                       sizeof(uint16_t));
-                payload_data = ntohs(payload_data);
-                char buff[BUF_LEN];
-
-                // format payload to short real
-                snprintf(buff, BUF_LEN, "%.2f", (float) payload_data / 100);
-                std::string str(buff);
-
-                // create content
-                package.contents = str;
-                break;
+            if (sign == 1) {
+                // The int is negative
+                package.contents = "-";
             }
-            case 2: {
-                package.data_type = "FLOAT";
+            package.contents += result;
 
-                // get sign byte
-                uint8_t sign = buffer[TOPIC_MAX_SIZE + 1];
-                if (sign != 0 && sign != 1) {
-                    break;
-                }
-
-                uint32_t first;
-                uint8_t negative_pow;
-
-                // get first part of Float number, of type uint32_t
-                memcpy(&first, buffer + TOPIC_MAX_SIZE + 2, sizeof(uint32_t));
-                first = ntohl(first);
-
-                // get negative power of Float number, of type uint8_t
-                memcpy(&negative_pow,
-                       buffer + TOPIC_MAX_SIZE + 2 + sizeof(uint32_t),
-                       sizeof(uint8_t));
-
-                // format payload to type float
-                stringstream payload_stream;
-                payload_stream << fixed
-                               << setprecision((int) negative_pow)
-                               << (float) first / pow(10, (int) negative_pow);
-
-                if (sign == 1) {
-                    package.contents = "-";
-                }
-
-                // add to contents
-                package.contents += payload_stream.str();
-
-                break;
-            }
-            case 3: {
-                package.data_type = "STRING";
-
-                // get string
-                std::string str(buffer + TOPIC_MAX_SIZE + 1);
-                // add to contents
-                package.contents = str;
-                break;
-            }
+            break;
         }
+        case 1: {
+            package.data_type = "SHORT_REAL";
 
-        // format UDP message
-        package.formatted_message = package.ip + ":" +
-                                    std::to_string(package.port) + " - " +
-                                    package.topic_name + " - " +
-                                    package.data_type + " - " +
-                                    package.contents;
+            uint16_t payload_data;
+            memcpy(&payload_data, buffer + TOPIC_MAX_SIZE + 1,
+                   sizeof(uint16_t));
+            payload_data = ntohs(payload_data);
+
+            char buff[BUF_LEN];
+            // Format payload to short real
+            snprintf(buff, BUF_LEN, "%.2f", (float) payload_data / 100);
+            string str(buff);
+
+            package.contents = str;
+
+            break;
+        }
+        case 2: {
+            package.data_type = "FLOAT";
+
+            // Get the sign byte
+            uint8_t sign = buffer[TOPIC_MAX_SIZE + 1];
+            if (!(sign == 0 || sign == 1)) {
+                break;
+            }
+
+            uint32_t mantissa;
+            uint8_t negative_exponent;
+
+            // Get mantissa part of the float
+            memcpy(&mantissa, buffer + TOPIC_MAX_SIZE + 2, sizeof(uint32_t));
+            mantissa = ntohl(mantissa);
+
+            // Get the exponent of the float
+            memcpy(&negative_exponent,
+                   buffer + TOPIC_MAX_SIZE + 2 + sizeof(uint32_t),
+                   sizeof(uint8_t));
+
+            // Format payload to type float
+            stringstream payload_data;
+            payload_data << fixed << setprecision((int) negative_exponent)
+                         << (float) mantissa / pow(10, (int) negative_exponent);
+
+            if (sign == 1) {
+                package.contents = "-";
+            }
+            package.contents += payload_data.str();
+
+            break;
+        }
+        case 3: {
+            package.data_type = "STRING";
+
+            // Get string
+            string str(buffer + TOPIC_MAX_SIZE + 1);
+            package.contents = str;
+
+            break;
+        }
+        default: {
+            cerr << "Invalid data type " << data_type << " found in UDP package!";
+            return package;
+        }
     }
+
+    // Format the final UDP message, if the data type was correct
+    package.formatted_message = package.ip + ":" +
+                                to_string(package.port) + " - " +
+                                package.topic_name + " - " +
+                                package.data_type + " - " +
+                                package.contents;
 
     return package;
 }
@@ -227,11 +221,11 @@ int find_subscriber(const string &client_id, topic topic) {
 
 bool matches_wildcard_path(const string &topic, const string &wildcard_topic) {
     // Escape "/" with "\/"
-    string escaped = regex_replace(wildcard_topic, std::regex("/"), "\\/");
+    string escaped = regex_replace(wildcard_topic, regex("/"), "\\/");
     // Replace "+" with "([^/]+)"
-    escaped = regex_replace(escaped, std::regex("\\+"), "([^/]+)");
+    escaped = regex_replace(escaped, regex("\\+"), "([^/]+)");
     // Replace "*" with "(.*)"
-    escaped = regex_replace(escaped, std::regex("\\*"), "(.*)");
+    escaped = regex_replace(escaped, regex("\\*"), "(.*)");
 
     // Verify if topic matches with wildcard_topic
     return regex_match(topic, regex(escaped));
@@ -275,7 +269,7 @@ void send_udp_message_to_client(const char *message, const client &tcp_client) {
 /**
  * Function sending the UDP message to subscribers
  * */
-void send_udp_message(const packet_UDP &packet, vector<topic> &topics) {
+void send_udp_message(const UDP_packet &packet, vector<topic> &topics) {
     string topic_name = packet.topic_name;
 
     // search topic based on name
@@ -376,7 +370,7 @@ vector<string> split_message(char *message) {
     vector<string> strings;
 
     while (current_line != nullptr) {
-        std::string str(current_line);
+        string str(current_line);
         strings.push_back(str);
         current_line = strtok(nullptr, " ");
     }
@@ -456,7 +450,7 @@ void close_client(int socket, char buffer[BUF_LEN]) {
 void close_clients(
         unordered_map<string, client *> map_id_clients,
         char buffer[BUF_LEN]) {
-    std::unordered_map<string, client *>::iterator client_iterator;
+    unordered_map<string, client *>::iterator client_iterator;
 
     // iterate through map of clients
     for (client_iterator = map_id_clients.begin();
