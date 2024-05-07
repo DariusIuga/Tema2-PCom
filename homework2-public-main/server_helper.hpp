@@ -50,20 +50,20 @@ struct topic {
 
 UDP_packet get_udp_packet(char *buffer, string &ip, int port);
 
-int find_subscriber(const string &client_id, topic topic);
+int get_subscriber_index(const string &client_id, topic topic);
 
 bool matches_wildcard_path(const string &topic, const string &wildcard_topic);
 
-int find_topic(const string &topic_name, vector<topic> topics, bool topic_can_be_wildcard);
+int get_topic_index(const string &topic_name, vector<topic> topics, bool topic_can_be_wildcard);
 
-void send_udp_message_to_client(const char *message, const client &tcp_client);
+void send_udp_packet_to_subscriber(const char *message, const client &tcp_client);
 
-void send_udp_message(const UDP_packet &packet, vector<topic> &topics);
+void send_udp_packet(const UDP_packet &packet, vector<topic> &topics);
 
-void subscribe_client(const string &topic_name, vector<topic> &topics, client *client);
+void subscribe_client(client *client, const string &topic_name, vector<topic> &topics);
 
-void unsubscribe_client(const string &topic_name,
-                        vector<topic> &topics, client *client);
+void unsubscribe_client(client *client, const string &topic_name,
+                        vector<topic> &topics);
 
 vector<string> split_message(char *message);
 
@@ -86,9 +86,7 @@ void disconnect_client(int socket,
                        unordered_map<int, client *> &map_connected_clients);
 
 
-/**
- * Function creating the UDP package and formatting the UDP message
- * */
+// Create and format UDP message
 UDP_packet get_udp_packet(char *buffer, string &ip, int port) {
     UDP_packet package;
     package.port = port;
@@ -204,21 +202,19 @@ UDP_packet get_udp_packet(char *buffer, string &ip, int port) {
     return package;
 }
 
-/**
- * Function searching subscriber based on ID and returning the index
- * */
-int find_subscriber(const string &client_id, topic topic) {
-    // Iterate through subscriber array
+// Searches for a subscriber based on ID and returns the index of it in a topic's subscribers
+int get_subscriber_index(const string &client_id, topic topic) {
     for (int i = 0; i < topic.subscribers.size(); i++) {
-        // Compare client ID with given ID
         if (topic.subscribers[i].subscribed_client->id != client_id) {
             return i;
         }
     }
 
+    // The client id wasn't found in the topic's subscriber list
     return -1;
 }
 
+// Takes a path topic and checks if it matches with a regex based on a wildcard path
 bool matches_wildcard_path(const string &topic, const string &wildcard_topic) {
     // Escape "/" with "\/"
     string escaped = regex_replace(wildcard_topic, regex("/"), "\\/");
@@ -231,24 +227,18 @@ bool matches_wildcard_path(const string &topic, const string &wildcard_topic) {
     return regex_match(topic, regex(escaped));
 }
 
-/**
- * Function searching topic based on given name and returning index
- * */
-int find_topic(const string &topic_name, vector<topic> topics, bool topic_can_be_wildcard) {
-
+// Searches for a topic based on its name in a list of topics and returns its index
+int get_topic_index(const string &topic_name, vector<topic> topics, bool topic_can_be_wildcard) {
+    // The topic given as input can be a wildcard if we call this function when subscribing or unsubscribing from a topic
     if (topic_can_be_wildcard) {
-        // The topic given as input can be a wildcard if
-
-        // iterate through topics array
-        for (int i = 0; i < topics.size(); ++i) {
-            // compare topic name with given name
+        for (int i = 0; i < topics.size(); i++) {
+            // Compare the name of the topic with the current topic from the vector
             if (topics[i].name == topic_name) {
                 return i;
             }
         }
     } else {
-        // iterate through topics array
-        for (int i = 0; i < topics.size(); ++i) {
+        for (int i = 0; i < topics.size(); i++) {
             // See if the topic name matches with a wildcard
             if (matches_wildcard_path(topic_name, topics[i].name)) {
                 return i;
@@ -259,119 +249,103 @@ int find_topic(const string &topic_name, vector<topic> topics, bool topic_can_be
     return -1;
 }
 
-/**
- * Function sending given message to client
- * */
-void send_udp_message_to_client(const char *message, const client &tcp_client) {
+// Sends a message to a TCP client
+void send_udp_packet_to_subscriber(const char *message, const client &tcp_client) {
     DIE(send(tcp_client.socket, message, strlen(message), 0) < 0, "Error when sending UDP message to the client.");
 }
 
-/**
- * Function sending the UDP message to subscribers
- * */
-void send_udp_message(const UDP_packet &packet, vector<topic> &topics) {
-    string topic_name = packet.topic_name;
-
-    // search topic based on name
-    int topic_ind = find_topic(topic_name, topics, false);
+// Sends a message to all TCP clients that are subscribed
+void send_udp_packet(const UDP_packet &packet, vector<topic> &topics) {
+    // Find the index of the topic with the packet's name
+    int topic_index = get_topic_index(packet.topic_name, topics, false);
     topic topic;
-    string formatted_message = packet.formatted_message;
-    formatted_message += "\n";
 
-    if (topic_ind == -1) {
-        // topic was not found so create new topic
+    if (topic_index == -1) {
+        // Topic wasn't found, add it to the topics vector
         topic.name = packet.topic_name;
         topics.push_back(topic);
         return;
     } else {
-        // get topic
-        topic = topics[topic_ind];
+        // Get the actual topic
+        topic = topics[topic_index];
     }
 
-    // get topic's subscribers
     vector<subscriber> subscribers = topic.subscribers;
-    const char *message = formatted_message.c_str();
+    string message_str = packet.formatted_message + "\n";
+    const char *message = message_str.c_str();
 
-    // iterate through subscribers
-    for (auto &subscriber: subscribers) {
+    for (subscriber &subscriber: subscribers) {
         if (subscriber.subscribed_client->is_online) {
-            // send UDP message to subscribers that are online
-            send_udp_message_to_client(message, *(subscriber.subscribed_client));
+            // Send UDP message to online subscribers
+            send_udp_packet_to_subscriber(message, *(subscriber.subscribed_client));
         }
     }
 }
 
-/**
- * Function subscribing client to given topic
- * */
-void subscribe_client(const string &topic_name, vector<topic> &topics, client *client) {
-    int topic_ind = find_topic(topic_name, topics, true);
-    topic topic;
+// Subscribe a client to a topic
+void subscribe_client(client *client, const string &topic_name, vector<topic> &topics) {
+    // Search for the topic
+    int topic_index = get_topic_index(topic_name, topics, true);
 
-    // topic not found
-    if (topic_ind == -1) {
-        // create topic and add to the array of topics
+    // Topic was not found
+    if (topic_index == -1) {
+        // Create a new topic and add it to the vector of topics
+        topic topic;
         topic.name = topic_name;
         topics.push_back(topic);
-        topic_ind = topics.size() - 1;
+        topic_index = topics.size() - 1;
     }
 
-    // find subscriber based on ID
-    int subscriber_index = find_subscriber(client->id, topics[topic_ind]);
+    // Find subscriber based on their ID
+    int sub_index = get_subscriber_index(client->id, topics[topic_index]);
 
-    // check if client is already subscribed to topic
-    if (subscriber_index != -1) {
+    // Return early if the client was already subscribed to this topic
+    if (sub_index != -1) {
         return;
     }
 
-    // create subscriber and add data
+    // Create a nuw subscriber
     subscriber new_subscriber{};
     new_subscriber.subscribed_client = client;
+    struct topic current_topic = topics[topic_index];
 
-    // insert subscriber to the topic's array of subscribers
-    topics[topic_ind].subscribers.push_back(new_subscriber);
+    // Insert subscriber to the topic's vector of subscribers.
+    topics[topic_index].subscribers.push_back(new_subscriber);
 }
 
-/**
- * Function unsubscribing client from given topic
- * */
-void unsubscribe_client(const string &topic_name,
-                        vector<topic> &topics, client *client) {
-    // search the topic based on name
-    int topic_ind = find_topic(topic_name, topics, true);
-    topic topic;
+// Unsubscribe a client from a topic
+void unsubscribe_client(client *client, const string &topic_name,
+                        vector<topic> &topics) {
+    // Search for the topic index
+    int topic_index = get_topic_index(topic_name, topics, true);
 
-    // topic not found
-    if (topic_ind == -1) {
-        // create topic and add to the array of topics
-        topic.name = topic_name;
-        topics.push_back(topic);
+    // Topic was not found
+    if (topic_index == -1) {
+        // The topic doesn't exist, do nothing
         return;
     }
 
-    // find subscriber based on ID
-    int subscriber_index = find_subscriber(client->id, topics[topic_ind]);
+    // Find subscriber based on their ID
+    int sub_index = get_subscriber_index(client->id, topics[topic_index]);
 
-    // subscriber not found
-    if (subscriber_index == -1) {
+    // Subscriber not found
+    if (sub_index == -1) {
         return;
     }
 
-    // remove subscriber from the topic's array of subscribers
-    topics[topic_ind].subscribers.erase(topics[topic_ind].subscribers.begin()
-                                        + subscriber_index);
+    // Remove subscriber from the given topic's vector of subscribers
+    topics[topic_index].subscribers.erase(topics[topic_index].subscribers.begin()
+                                          + sub_index);
 }
 
-/**
- * Function splitting given message
- * */
+// Split a message into words
 vector<string> split_message(char *message) {
-    char *current_line = strtok(message, " \n");
     vector<string> strings;
+    char *current_line = strtok(message, " \n");
 
     while (current_line != nullptr) {
-        string str(current_line);
-        strings.push_back(str);
+        string line(current_line);
+        strings.push_back(line);
         current_line = strtok(nullptr, " ");
     }
 
@@ -384,52 +358,42 @@ vector<string> split_message(char *message) {
 void execute_tcp_client_command(int socket, char *message,
                                 vector<topic> &topics,
                                 unordered_map<int, client *> &map_connected_clients) {
-    // find client based on socket
+    // Find client based on sockets
     auto client_iterator = map_connected_clients.find(socket);
-
-    // client was not found
     if (client_iterator == map_connected_clients.end()) {
         return;
     }
-
     client *client = client_iterator->second;
 
-    // process message
+    // Get every word in the message
     vector<string> strings = split_message(message);
-    char buffer[BUF_LEN];
-
-    // Invalid message
+    // Invalid message, it should only contain the action and topic
     if (strings.size() != 2) {
         return;
     }
 
+    // Check if the command is wrong
+    DIE(!(strings[0] == "subscribe" || strings[0] == "unsubscribe"),
+        "Unsupported command received. The only available commands are subscribe and unsubscribe.\n");
+    char buffer[BUF_LEN];
+    size_t client_message_len;
     if (strings[0] == "subscribe") {
-        // subscribe command
+        // Subscribe client
+        subscribe_client(client, strings[1], topics);
 
-        // get SF
-
-        // subscribe client
-        subscribe_client(strings[1], topics, client);
-
-        size_t n = strlen("Subscribed to topic \n") + strings[1].size() + 1;
-        snprintf(buffer, n, "Subscribed to topic %s\n", strings[1].c_str());
+        client_message_len = strlen("Subscribed to topic \n") + strings[1].size() + 1;
+        snprintf(buffer, client_message_len, "Subscribed to topic %s\n", strings[1].c_str());
 
         // send subscription message to client
-        DIE(send(socket, buffer, n, 0) < 0, "Error when sending subscribe message to the client.");
-    } else if (strings[0] == "unsubscribe") {
-        // unsubscribe command
-
-        // unsubscribe client
-        unsubscribe_client(strings[1], topics, client);
-        size_t n = strlen("Unsubscribed to topic \n") + strings[1].size() + 1;
-        snprintf(buffer, n, "Unsubscribed to topic %s\n", strings[1].c_str());
-
-        cout << buffer << "\n";
+        DIE(send(socket, buffer, client_message_len, 0) < 0, "Error when sending subscribe message to the client.");
+    } else {
+        // Unsubscribe client
+        unsubscribe_client(client, strings[1], topics);
+        client_message_len = strlen("Unsubscribed to topic \n") + strings[1].size() + 1;
+        snprintf(buffer, client_message_len, "Unsubscribed to topic %s\n", strings[1].c_str());
 
         // send unsubscribe message to client
-        DIE(send(socket, buffer, n, 0) < 0, "Error when sending unsubscribe message to the client.");
-    } else {
-        cerr << "Unsupported command received: " << strings[0] << "\n";
+        DIE(send(socket, buffer, client_message_len, 0) < 0, "Error when sending unsubscribe message to the client.");
     }
 }
 

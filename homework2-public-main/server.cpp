@@ -131,7 +131,7 @@ int main(int argc, char *argv[]) {
                     }
 
                     // Send the UDP message to the clients that are subscribed to its topic
-                    send_udp_message(packet, topics);
+                    send_udp_packet(packet, topics);
                 } else if (i == socket_TCP) {
                     // A new TCP client wants to connect
 
