@@ -1,7 +1,3 @@
-//
-// Created by darius on 5/3/24.
-//
-
 #ifndef TEMA2_PCOM_SERVER_HELPER_HPP
 #define TEMA2_PCOM_SERVER_HELPER_HPP
 
@@ -22,6 +18,18 @@ constexpr auto MAX_CLIENTS = 1000;
 
 using namespace std;
 
+
+struct client {
+    bool is_online{};
+    int socket{};
+    string id, ip;
+    int port{};
+};
+
+struct subscriber {
+    client *subscribed_client;
+};
+
 struct UDP_packet {
     string ip;
     int port{};
@@ -29,17 +37,6 @@ struct UDP_packet {
     string data_type;
     string contents;
     string formatted_message;
-};
-
-struct client {
-    int socket{};
-    string id, ip;
-    int port{};
-    bool is_online{};
-};
-
-struct subscriber {
-    client *subscribed_client;
 };
 
 struct topic {
@@ -67,7 +64,7 @@ void unsubscribe_client(client *client, const string &topic_name,
 
 vector<string> split_message(char *message);
 
-void execute_subscriber_command(int socket, unordered_map<int, client *> &map_connected_clients, char *message,
+void execute_subscriber_command(int socket, unordered_map<int, client *> &map_sockets_clients, char *message,
                                 vector<topic> &topics);
 
 void close_client(int socket, char buffer[BUF_LEN]);
@@ -77,11 +74,11 @@ void close_clients(
         char buffer[BUF_LEN]);
 
 void
-connect_client(unordered_map<int, client *> &map_connected_clients, unordered_map<string, client *> &map_id_clients,
+connect_client(unordered_map<int, client *> &map_sockets_clients, unordered_map<string, client *> &map_id_clients,
                int socket, const string &id, const string &ip, int port);
 
 void
-disconnect_client(unordered_map<int, client *> &map_connected_clients, unordered_map<string, client *> &map_id_clients,
+disconnect_client(unordered_map<int, client *> &map_sockets_clients, unordered_map<string, client *> &map_id_clients,
                   int socket);
 
 
@@ -352,11 +349,11 @@ vector<string> split_message(char *message) {
 }
 
 // Execute a command received from a TCP client
-void execute_subscriber_command(int socket, unordered_map<int, client *> &map_connected_clients, char *message,
+void execute_subscriber_command(int socket, unordered_map<int, client *> &map_sockets_clients, char *message,
                                 vector<topic> &topics) {
     // Find client based on sockets
-    auto client_iterator = map_connected_clients.find(socket);
-    if (client_iterator == map_connected_clients.end()) {
+    auto client_iterator = map_sockets_clients.find(socket);
+    if (client_iterator == map_sockets_clients.end()) {
         return;
     }
     client *client = client_iterator->second;
@@ -421,7 +418,7 @@ void close_clients(
 
 // Connects a client to the server
 void
-connect_client(unordered_map<int, client *> &map_connected_clients, unordered_map<string, client *> &map_id_clients,
+connect_client(unordered_map<int, client *> &map_sockets_clients, unordered_map<string, client *> &map_id_clients,
                int socket, const string &id, const string &ip, int port) {
     client *current_client;
     // Find a client based on the ID provided
@@ -456,9 +453,9 @@ connect_client(unordered_map<int, client *> &map_connected_clients, unordered_ma
         current_client->socket = socket;
 
         // delete the previous socket key from the map
-        map_connected_clients.erase(previous_socket);
+        map_sockets_clients.erase(previous_socket);
         // add the newly created pair to map
-        map_connected_clients.insert(pair<int, client *>(socket, current_client));
+        map_sockets_clients.insert(pair<int, client *>(socket, current_client));
 
         map_id_clients.erase(id);
         map_id_clients.insert(pair<string, client *>(id, current_client));
@@ -479,7 +476,7 @@ connect_client(unordered_map<int, client *> &map_connected_clients, unordered_ma
     current_client->port = port;
 
     // Insert a pair of socket file descriptor and map into the map for connected clients
-    map_connected_clients.insert(pair<int, client *>(socket, current_client));
+    map_sockets_clients.insert(pair<int, client *>(socket, current_client));
     // Insert a pair of user ID and map into the other map for finding clients
     map_id_clients.insert(pair<string, client *>(id, current_client));
 
@@ -489,13 +486,13 @@ connect_client(unordered_map<int, client *> &map_connected_clients, unordered_ma
 
 // Disconnect a client from the server
 void
-disconnect_client(unordered_map<int, client *> &map_connected_clients, unordered_map<string, client *> &map_id_clients,
+disconnect_client(unordered_map<int, client *> &map_sockets_clients, unordered_map<string, client *> &map_id_clients,
                   int socket) {
     // Search for a client based on the provided socket
-    auto socket_map_entry = map_connected_clients.find(socket);
+    auto socket_map_entry = map_sockets_clients.find(socket);
 
     // Client not found
-    if (socket_map_entry == map_connected_clients.end()) {
+    if (socket_map_entry == map_sockets_clients.end()) {
         return;
     }
 
@@ -503,7 +500,7 @@ disconnect_client(unordered_map<int, client *> &map_connected_clients, unordered
     // Set online status to false
     current_client->is_online = false;
     // Remove the client from both hashmaps
-    map_connected_clients.erase(socket);
+    map_sockets_clients.erase(socket);
     map_id_clients.erase(current_client->id);
 
     // Close the fd;
