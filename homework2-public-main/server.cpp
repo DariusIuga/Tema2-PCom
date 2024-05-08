@@ -151,10 +151,10 @@ int main(int argc, char *argv[]) {
                     DIE(recv(client_socket_TCP, buffer, sizeof(buffer), 0) < 0, "Error when receiving client ID.");
 
                     // Connect to the new TCP client
-                    connect_client(buffer, inet_ntoa(tcp_address.sin_addr),
-                                   ntohs(tcp_address.sin_port),
-                                   map_connected_clients, map_id_clients,
-                                   client_socket_TCP);
+                    connect_client(
+                            map_connected_clients, map_id_clients,
+                            client_socket_TCP, buffer, inet_ntoa(tcp_address.sin_addr),
+                            ntohs(tcp_address.sin_port));
 
                     fflush(stdout);
                 } else {
@@ -165,12 +165,12 @@ int main(int argc, char *argv[]) {
 
                     if (nr_bytes_read == 0 || strncmp(buffer, "exit", 4) == 0) {
                         // Client has received exit/forceful shut down command, disconnect it from the server
-                        disconnect_client(i, map_connected_clients);
+                        disconnect_client(map_connected_clients, map_id_clients, i);
                         // Remove the fd from the set
                         FD_CLR(i, &read_fds);
                     } else {
                         // Process and execute the command
-                        execute_tcp_client_command(i, buffer, topics, map_connected_clients);
+                        execute_subscriber_command(i, map_connected_clients, buffer, topics);
                     }
                 }
             }

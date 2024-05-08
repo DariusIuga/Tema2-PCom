@@ -67,23 +67,22 @@ void unsubscribe_client(client *client, const string &topic_name,
 
 vector<string> split_message(char *message);
 
-void execute_tcp_client_command(int socket, char *message,
-                                vector<topic> &topics,
-                                unordered_map<int, client *> &map_connected_clients);
+void execute_subscriber_command(int socket, unordered_map<int, client *> &map_connected_clients, char *message,
+                                vector<topic> &topics);
 
 void close_client(int socket, char buffer[BUF_LEN]);
 
 void close_clients(
-        unordered_map<string, client *> map_id_clients,
+        const unordered_map<string, client *> &map_id_clients,
         char buffer[BUF_LEN]);
 
-void connect_client(const string &id, const string &ip, int port,
-                    unordered_map<int, client *> &map_connected_clients,
-                    unordered_map<string, client *> &map_id_clients,
-                    int socket);
+void
+connect_client(unordered_map<int, client *> &map_connected_clients, unordered_map<string, client *> &map_id_clients,
+               int socket, const string &id, const string &ip, int port);
 
-void disconnect_client(int socket,
-                       unordered_map<int, client *> &map_connected_clients);
+void
+disconnect_client(unordered_map<int, client *> &map_connected_clients, unordered_map<string, client *> &map_id_clients,
+                  int socket);
 
 
 // Create and format UDP message
@@ -352,12 +351,9 @@ vector<string> split_message(char *message) {
     return strings;
 }
 
-/**
- * Function processing message from the TCP client and executing the command
- * */
-void execute_tcp_client_command(int socket, char *message,
-                                vector<topic> &topics,
-                                unordered_map<int, client *> &map_connected_clients) {
+// Execute a command received from a TCP client
+void execute_subscriber_command(int socket, unordered_map<int, client *> &map_connected_clients, char *message,
+                                vector<topic> &topics) {
     // Find client based on sockets
     auto client_iterator = map_connected_clients.find(socket);
     if (client_iterator == map_connected_clients.end()) {
@@ -378,85 +374,74 @@ void execute_tcp_client_command(int socket, char *message,
     char buffer[BUF_LEN];
     size_t client_message_len;
     if (strings[0] == "subscribe") {
-        // Subscribe client
         subscribe_client(client, strings[1], topics);
 
+        // Prepare the message that will be sent to the client
         client_message_len = strlen("Subscribed to topic \n") + strings[1].size() + 1;
         snprintf(buffer, client_message_len, "Subscribed to topic %s\n", strings[1].c_str());
 
-        // send subscription message to client
+        // Send subscribe message to subscriber
         DIE(send(socket, buffer, client_message_len, 0) < 0, "Error when sending subscribe message to the client.");
     } else {
-        // Unsubscribe client
         unsubscribe_client(client, strings[1], topics);
+
+        // Prepare the message that will be sent to the client
         client_message_len = strlen("Unsubscribed to topic \n") + strings[1].size() + 1;
         snprintf(buffer, client_message_len, "Unsubscribed to topic %s\n", strings[1].c_str());
 
-        // send unsubscribe message to client
+        // Send unsubscribe message to subscriber
         DIE(send(socket, buffer, client_message_len, 0) < 0, "Error when sending unsubscribe message to the client.");
     }
 }
 
-/**
- * Function closing the connection to a single client
- * */
+// Close the connection to a single TCP/UDP client
 void close_client(int socket, char buffer[BUF_LEN]) {
-    // send the exit message to client
-    DIE(send(socket, buffer, strlen(buffer), 0) < 0, "Error when sending unsubscribe message to the client.");
-
-    // close connection
+    // Send the final exit message to the client
+    DIE(send(socket, buffer, strlen(buffer), 0) < 0, "Error when sending exit message to the client.");
     close(socket);
 }
 
-/**
- * Function closing clients connections
- * */
+// Close every connection to the TCP/UDP clients on server shutdown
 void close_clients(
-        unordered_map<string, client *> map_id_clients,
+        const unordered_map<string, client *> &map_id_clients,
         char buffer[BUF_LEN]) {
-    unordered_map<string, client *>::iterator client_iterator;
+    // Iterate through every entry in the client map
+    for (const auto &client_map_entry: map_id_clients) {
+        client *current_client = client_map_entry.second;
 
-    // iterate through map of clients
-    for (client_iterator = map_id_clients.begin();
-         client_iterator != map_id_clients.end(); ++client_iterator) {
-        client *current_client = client_iterator->second;
-
-        // check if client is online
+        // Close connections to clients that are online
         if (current_client->is_online) {
-            // close connection to client
             close_client(current_client->socket, buffer);
         }
 
-        // free allocated memory for the client
+        // Free the memory for this client
         delete current_client;
     }
 }
 
-/**
- * Function connecting a client from the server
- * */
-void connect_client(const string &id, const string &ip, int port,
-                    unordered_map<int, client *> &map_connected_clients,
-                    unordered_map<string, client *> &map_id_clients,
-                    int socket) {
-    // search client based on ID
-    auto client_iterator = map_id_clients.find(id);
-
+// Connects a client to the server
+void
+connect_client(unordered_map<int, client *> &map_connected_clients, unordered_map<string, client *> &map_id_clients,
+               int socket, const string &id, const string &ip, int port) {
     client *current_client;
+    // Find a client based on the ID provided
+    auto id_map_entry = map_id_clients.find(id);
 
-    if (client_iterator != map_id_clients.end()) {
-        // client with given ID does exist inside the map
-        current_client = client_iterator->second;
+    if (id_map_entry != map_id_clients.end()) {
+        // Client with the given ID doesn't exist
+        current_client = id_map_entry->second;
         if (current_client->is_online) {
-            // client is online
             cout << "Client " << id << " already connected.\n";
 
-            if (socket != current_client->socket) {
-                // send exit command to the newly opened socket
-                char buff[BUF_LEN];
-                memset(buff, 0, BUF_LEN);
-                memcpy(buff, "exit", strlen("exit"));
-                DIE(send(socket, buff, strlen(buff), 0) < 0, "Error when sending exit command to socket.");
+            // This is used for closing the new client if a client with the same ID wants to connect,
+            // so there aren't any duplicates
+            if (current_client->socket != socket) {
+                // Send exit command to the duplicate client
+                char exit_buffer[BUF_LEN];
+                memset(exit_buffer, 0, BUF_LEN);
+                memcpy(exit_buffer, "exit", strlen("exit"));
+                DIE(send(socket, exit_buffer, strlen(exit_buffer), 0) < 0,
+                    "Error when sending exit command to socket.");
             }
 
             return;
@@ -483,45 +468,48 @@ void connect_client(const string &id, const string &ip, int port,
         return;
     }
 
-    // client was not found so a new one is created
+    // Client was not found, create a new one
     current_client = new client;
 
-    // add data to the client
+    // Initialize client data
+    current_client->socket = socket;
+    current_client->is_online = true;
     current_client->id = id;
     current_client->ip = ip;
     current_client->port = port;
-    current_client->is_online = true;
-    current_client->socket = socket;
 
-    // insert a pair of client and socket to the map
+    // Insert a pair of socket file descriptor and map into the map for connected clients
     map_connected_clients.insert(pair<int, client *>(socket, current_client));
+    // Insert a pair of user ID and map into the other map for finding clients
     map_id_clients.insert(pair<string, client *>(id, current_client));
 
+    // Print the connection message to the server
     cout << "New client " << id << " connected from " << ip << ":" << port << ".\n";
 }
 
-/**
- * Function disconnecting a client from the server
- * */
-void disconnect_client(int socket,
-                       unordered_map<int, client *> &map_connected_clients) {
-    // search client based on given socket in map
-    auto client_iterator = map_connected_clients.find(socket);
+// Disconnect a client from the server
+void
+disconnect_client(unordered_map<int, client *> &map_connected_clients, unordered_map<string, client *> &map_id_clients,
+                  int socket) {
+    // Search for a client based on the provided socket
+    auto socket_map_entry = map_connected_clients.find(socket);
 
-    // client not found
-    if (client_iterator == map_connected_clients.end()) {
+    // Client not found
+    if (socket_map_entry == map_connected_clients.end()) {
         return;
     }
 
-    // client was found
-    client *current_client = client_iterator->second;
-    // client's is_online is changed
+    client *current_client = socket_map_entry->second;
+    // Set online status to false
     current_client->is_online = false;
+    // Remove the client from both hashmaps
     map_connected_clients.erase(socket);
+    map_id_clients.erase(current_client->id);
 
     // Close the fd;
     close(socket);
 
+    // Show disconnected message in server
     cout << "Client " << current_client->id << " disconnected.\n";
 }
 
