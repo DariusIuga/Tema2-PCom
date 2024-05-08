@@ -1,5 +1,5 @@
             PCom - Tema 2 (2023-2024) - Aplicatie client-server TCP si UDP pentru gestionarea mesajelor
-            Iuga Darius-Gabriel-Ioan
+            Iuga Darius-Gabriel-Ioan - 324CC
 
 Structuri de date folosite:
     - client: contine socketul, idul, ipul, portul si un flag de stare (offline/online) pentru un client TCP
